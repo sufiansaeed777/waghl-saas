@@ -52,8 +52,8 @@ module.exports = (sequelize) => {
       allowNull: true
     },
     metadata: {
-      type: DataTypes.JSONB,
-      defaultValue: {}
+      type: DataTypes.JSON,
+      allowNull: true
     }
   }, {
     tableName: 'messages',
