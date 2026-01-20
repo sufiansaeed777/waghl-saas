@@ -1,4 +1,3 @@
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion } = require('@whiskeysockets/baileys');
 const { Boom } = require('@hapi/boom');
 const QRCode = require('qrcode');
 const path = require('path');
@@ -7,6 +6,9 @@ const { SubAccount, Message } = require('../models');
 const webhookService = require('./webhook');
 const ghlService = require('./ghl');
 const logger = require('../utils/logger');
+
+// Baileys will be loaded dynamically
+let makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion;
 
 // Store active connections
 const connections = new Map();
@@ -19,10 +21,24 @@ if (!fs.existsSync(SESSION_PATH)) {
   fs.mkdirSync(SESSION_PATH, { recursive: true });
 }
 
+// Initialize Baileys (ESM module)
+async function initBaileys() {
+  if (!makeWASocket) {
+    const baileys = await import('@whiskeysockets/baileys');
+    makeWASocket = baileys.default;
+    DisconnectReason = baileys.DisconnectReason;
+    useMultiFileAuthState = baileys.useMultiFileAuthState;
+    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+  }
+}
+
 class WhatsAppService {
   // Initialize connection for a sub-account
   async connect(subAccountId) {
     try {
+      // Ensure Baileys is loaded
+      await initBaileys();
+
       const subAccount = await SubAccount.findByPk(subAccountId);
       if (!subAccount) {
         throw new Error('Sub-account not found');
@@ -44,11 +60,12 @@ class WhatsAppService {
       const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
       const { version } = await fetchLatestBaileysVersion();
 
+      const pino = require('pino');
       const socket = makeWASocket({
         version,
         auth: state,
         printQRInTerminal: false,
-        logger: require('pino')({ level: 'silent' }),
+        logger: pino({ level: 'silent' }),
         browser: ['WAGHL SaaS', 'Chrome', '120.0.0'],
         connectTimeoutMs: 60000,
         qrTimeout: 60000
@@ -391,6 +408,9 @@ class WhatsAppService {
   // Restore sessions on server start
   async restoreSessions() {
     try {
+      // Ensure Baileys is loaded
+      await initBaileys();
+
       const subAccounts = await SubAccount.findAll({
         where: { status: 'connected' }
       });
