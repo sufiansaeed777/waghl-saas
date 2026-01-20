@@ -2,12 +2,27 @@ const Stripe = require('stripe');
 const { Customer, SubAccount } = require('../models');
 const logger = require('../utils/logger');
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+// Initialize Stripe only if key is provided
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? new Stripe(process.env.STRIPE_SECRET_KEY)
+  : null;
+
+function checkStripeConfigured() {
+  if (!stripe) {
+    throw new Error('Stripe is not configured. Please set STRIPE_SECRET_KEY in environment variables.');
+  }
+}
 
 class StripeService {
+  // Check if Stripe is configured
+  isConfigured() {
+    return !!stripe;
+  }
+
   // Create Stripe customer
   async createStripeCustomer(customer) {
     try {
+      checkStripeConfigured();
       const stripeCustomer = await stripe.customers.create({
         email: customer.email,
         name: customer.name,
@@ -28,6 +43,7 @@ class StripeService {
   // Create checkout session for subscription
   async createCheckoutSession(customer, subAccountId) {
     try {
+      checkStripeConfigured();
       if (!customer.stripeCustomerId) {
         await this.createStripeCustomer(customer);
       }
@@ -58,6 +74,7 @@ class StripeService {
   // Handle webhook events
   async handleWebhook(event) {
     try {
+      checkStripeConfigured();
       switch (event.type) {
         case 'checkout.session.completed': {
           const session = event.data.object;
@@ -136,6 +153,7 @@ class StripeService {
   // Get billing portal session
   async createBillingPortalSession(customer) {
     try {
+      checkStripeConfigured();
       if (!customer.stripeCustomerId) {
         throw new Error('No Stripe customer found');
       }
