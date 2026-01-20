@@ -28,8 +28,12 @@ module.exports = (sequelize) => {
       allowNull: true
     },
     events: {
-      type: DataTypes.ARRAY(DataTypes.STRING),
-      defaultValue: ['message.received', 'message.sent', 'connection.status']
+      type: DataTypes.JSON,
+      defaultValue: ['message.received', 'message.sent', 'connection.status'],
+      get() {
+        const value = this.getDataValue('events');
+        return value ? (typeof value === 'string' ? JSON.parse(value) : value) : [];
+      }
     },
     isActive: {
       type: DataTypes.BOOLEAN,
