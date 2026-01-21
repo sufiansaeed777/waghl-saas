@@ -25,11 +25,11 @@ if (!fs.existsSync(SESSION_PATH)) {
 async function initBaileys() {
   if (!makeWASocket) {
     const baileys = await import('@whiskeysockets/baileys');
-    // Handle different export structures in different versions
-    makeWASocket = baileys.default || baileys.makeWASocket || baileys;
-    DisconnectReason = baileys.DisconnectReason;
-    useMultiFileAuthState = baileys.useMultiFileAuthState;
-    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;
+    // Handle different export structures - direct export takes priority
+    makeWASocket = baileys.makeWASocket || baileys.default?.makeWASocket;
+    DisconnectReason = baileys.DisconnectReason || baileys.default?.DisconnectReason;
+    useMultiFileAuthState = baileys.useMultiFileAuthState || baileys.default?.useMultiFileAuthState;
+    fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion || baileys.default?.fetchLatestBaileysVersion;
   }
 }
 
