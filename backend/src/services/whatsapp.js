@@ -25,7 +25,8 @@ if (!fs.existsSync(SESSION_PATH)) {
 async function initBaileys() {
   if (!makeWASocket) {
     const baileys = await import('@whiskeysockets/baileys');
-    makeWASocket = baileys.default;
+    // Handle different export structures in different versions
+    makeWASocket = baileys.default || baileys.makeWASocket || baileys;
     DisconnectReason = baileys.DisconnectReason;
     useMultiFileAuthState = baileys.useMultiFileAuthState;
     fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion;

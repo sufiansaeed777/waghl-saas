@@ -20,6 +20,7 @@ const authenticateJWT = async (req, res, next) => {
     }
 
     req.customer = customer;
+    req.user = customer; // Also set req.user for compatibility
     next();
   } catch (error) {
     logger.error('JWT authentication error:', error);
