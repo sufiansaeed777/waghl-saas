@@ -15,8 +15,8 @@ class GHLService {
   }
 
   // Generate OAuth authorization URL
-  getAuthorizationUrl(customerId) {
-    const state = Buffer.from(JSON.stringify({ customerId })).toString('base64');
+  getAuthorizationUrl(customerId, subAccountId = null) {
+    const state = Buffer.from(JSON.stringify({ customerId, subAccountId })).toString('base64');
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: this.clientId,
@@ -51,10 +51,10 @@ class GHLService {
     }
   }
 
-  // Refresh access token
-  async refreshAccessToken(customer) {
+  // Refresh access token (works with both Customer and SubAccount)
+  async refreshAccessToken(entity) {
     try {
-      if (!customer.ghlRefreshToken) {
+      if (!entity.ghlRefreshToken) {
         throw new Error('No refresh token available');
       }
 
@@ -62,7 +62,7 @@ class GHLService {
         client_id: this.clientId,
         client_secret: this.clientSecret,
         grant_type: 'refresh_token',
-        refresh_token: customer.ghlRefreshToken,
+        refresh_token: entity.ghlRefreshToken,
         redirect_uri: this.redirectUri,
         user_type: 'Location'
       }, {
@@ -74,10 +74,10 @@ class GHLService {
 
       const { access_token, refresh_token, expires_in } = response.data;
 
-      // Update customer with new tokens
-      await customer.update({
+      // Update entity with new tokens
+      await entity.update({
         ghlAccessToken: access_token,
-        ghlRefreshToken: refresh_token || customer.ghlRefreshToken,
+        ghlRefreshToken: refresh_token || entity.ghlRefreshToken,
         ghlTokenExpiresAt: new Date(Date.now() + (expires_in * 1000))
       });
 
@@ -85,31 +85,31 @@ class GHLService {
     } catch (error) {
       logger.error('GHL token refresh error:', error.response?.data || error.message);
       // Mark GHL as disconnected if refresh fails
-      await customer.update({ ghlConnected: false });
+      await entity.update({ ghlConnected: false });
       throw new Error('Failed to refresh access token');
     }
   }
 
-  // Get valid access token (refreshes if needed)
-  async getValidAccessToken(customer) {
-    if (!customer.ghlAccessToken) {
+  // Get valid access token (refreshes if needed) - works with SubAccount or Customer
+  async getValidAccessToken(entity) {
+    if (!entity.ghlAccessToken) {
       throw new Error('GHL not connected');
     }
 
     // Check if token is expired or will expire in next 5 minutes
-    const expiresAt = new Date(customer.ghlTokenExpiresAt);
+    const expiresAt = new Date(entity.ghlTokenExpiresAt);
     const fiveMinutesFromNow = new Date(Date.now() + 5 * 60 * 1000);
 
     if (expiresAt <= fiveMinutesFromNow) {
-      return await this.refreshAccessToken(customer);
+      return await this.refreshAccessToken(entity);
     }
 
-    return customer.ghlAccessToken;
+    return entity.ghlAccessToken;
   }
 
-  // Make authenticated API request
-  async apiRequest(customer, method, endpoint, data = null) {
-    const accessToken = await this.getValidAccessToken(customer);
+  // Make authenticated API request (works with SubAccount or Customer)
+  async apiRequest(entity, method, endpoint, data = null) {
+    const accessToken = await this.getValidAccessToken(entity);
 
     try {
       const response = await axios({
@@ -284,10 +284,9 @@ class GHLService {
   // Sync WhatsApp message to GHL
   async syncMessageToGHL(subAccount, fromNumber, toNumber, content, direction = 'inbound') {
     try {
-      // Get customer
-      const customer = await Customer.findByPk(subAccount.customerId);
-      if (!customer || !customer.ghlConnected) {
-        logger.debug('GHL not connected for customer, skipping sync');
+      // Check if sub-account has GHL connected
+      if (!subAccount.ghlConnected || !subAccount.ghlAccessToken) {
+        logger.debug('GHL not connected for sub-account, skipping sync');
         return null;
       }
 
@@ -300,9 +299,9 @@ class GHLService {
       // Determine the external phone number (not our WhatsApp number)
       const externalPhone = direction === 'inbound' ? fromNumber : toNumber;
 
-      // Get or create contact
+      // Get or create contact (using subAccount for API calls)
       const contact = await this.getOrCreateContact(
-        customer,
+        subAccount,
         subAccount.ghlLocationId,
         externalPhone
       );
@@ -313,12 +312,12 @@ class GHLService {
       }
 
       // Get or create conversation
-      let conversations = await this.getConversations(customer, contact.id);
+      let conversations = await this.getConversations(subAccount, contact.id);
       let conversation = conversations[0];
 
       if (!conversation) {
         conversation = await this.createConversation(
-          customer,
+          subAccount,
           subAccount.ghlLocationId,
           contact.id
         );
@@ -327,7 +326,7 @@ class GHLService {
       // Add message to conversation
       if (conversation) {
         await this.addMessageToConversation(
-          customer,
+          subAccount,
           conversation.id,
           content,
           direction

@@ -59,6 +59,18 @@ module.exports = (sequelize) => {
     ghlConnected: {
       type: DataTypes.BOOLEAN,
       defaultValue: false
+    },
+    ghlAccessToken: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    ghlRefreshToken: {
+      type: DataTypes.TEXT,
+      allowNull: true
+    },
+    ghlTokenExpiresAt: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   }, {
     tableName: 'sub_accounts',

@@ -1,16 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { ArrowLeft, RefreshCw, Wifi, WifiOff, MapPin, MessageSquare, Send, ArrowDownLeft, ArrowUpRight, Image, FileText, Paperclip, X } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Wifi, WifiOff, MapPin, MessageSquare, Send, ArrowDownLeft, ArrowUpRight, Image, FileText, Paperclip, X, Link, Unlink } from 'lucide-react'
 
 export default function SubAccountDetail() {
   const { id } = useParams()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const [subAccount, setSubAccount] = useState(null)
   const [status, setStatus] = useState(null)
   const [loading, setLoading] = useState(true)
   const [connecting, setConnecting] = useState(false)
+  const [ghlStatus, setGhlStatus] = useState({ connected: false, loading: true })
+  const [connectingGhl, setConnectingGhl] = useState(false)
   const [conversations, setConversations] = useState([])
   const [selectedContact, setSelectedContact] = useState(null)
   const [messages, setMessages] = useState([])
@@ -51,6 +54,26 @@ export default function SubAccountDetail() {
     }
   }, [id])
 
+  const fetchGhlStatus = useCallback(async () => {
+    try {
+      const { data } = await api.get(`/ghl/status/${id}`)
+      setGhlStatus({ ...data, loading: false })
+    } catch (error) {
+      setGhlStatus({ connected: false, loading: false })
+    }
+  }, [id])
+
+  // Check for GHL callback results
+  useEffect(() => {
+    if (searchParams.get('ghl_connected') === 'true') {
+      toast.success('GoHighLevel connected successfully!')
+      fetchGhlStatus()
+      fetchSubAccount()
+    } else if (searchParams.get('ghl_error')) {
+      toast.error(`GHL connection failed: ${searchParams.get('ghl_error')}`)
+    }
+  }, [searchParams, fetchGhlStatus, fetchSubAccount])
+
   const fetchMessages = async (contactNumber) => {
     setLoadingMessages(true)
     try {
@@ -69,6 +92,7 @@ export default function SubAccountDetail() {
     fetchSubAccount()
     fetchStatus()
     fetchConversations()
+    fetchGhlStatus()
 
     // Poll for status and conversations updates
     const interval = setInterval(() => {
@@ -79,7 +103,7 @@ export default function SubAccountDetail() {
       }
     }, 5000)
     return () => clearInterval(interval)
-  }, [fetchSubAccount, fetchStatus, fetchConversations, selectedContact])
+  }, [fetchSubAccount, fetchStatus, fetchConversations, fetchGhlStatus, selectedContact])
 
   const connect = async () => {
     setConnecting(true)
@@ -103,6 +127,30 @@ export default function SubAccountDetail() {
       fetchStatus()
     } catch (error) {
       toast.error('Failed to disconnect')
+    }
+  }
+
+  const connectGhl = async () => {
+    setConnectingGhl(true)
+    try {
+      const { data } = await api.get(`/ghl/auth-url/${id}`)
+      window.location.href = data.authUrl
+    } catch (error) {
+      toast.error('Failed to start GHL connection')
+      setConnectingGhl(false)
+    }
+  }
+
+  const disconnectGhl = async () => {
+    if (!confirm('Are you sure you want to disconnect GoHighLevel?')) return
+
+    try {
+      await api.post(`/ghl/disconnect/${id}`)
+      toast.success('GoHighLevel disconnected')
+      setGhlStatus({ connected: false, loading: false })
+      fetchSubAccount()
+    } catch (error) {
+      toast.error('Failed to disconnect GHL')
     }
   }
 
@@ -234,14 +282,39 @@ export default function SubAccountDetail() {
             {subAccount?.phoneNumber || 'Not connected'} | Location: {subAccount?.ghlLocationId || 'Not set'}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
+          {/* GHL Status */}
+          {ghlStatus.connected ? (
+            <div className="flex items-center gap-2">
+              <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700 flex items-center gap-1">
+                <Link size={14} /> GHL Connected
+              </span>
+              <button
+                onClick={disconnectGhl}
+                className="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded"
+                title="Disconnect GHL"
+              >
+                <Unlink size={14} />
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={connectGhl}
+              disabled={connectingGhl}
+              className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 flex items-center gap-1"
+            >
+              <Link size={14} />
+              {connectingGhl ? 'Connecting...' : 'Connect GHL'}
+            </button>
+          )}
+          {/* WhatsApp Status */}
           <span className={`px-3 py-1 rounded-full text-sm font-medium ${
             status?.status === 'connected' ? 'bg-green-100 text-green-700' :
             status?.status === 'qr_ready' ? 'bg-yellow-100 text-yellow-700' :
             status?.status === 'connecting' ? 'bg-blue-100 text-blue-700' :
             'bg-gray-100 text-gray-700'
           }`}>
-            {status?.status || 'disconnected'}
+            WA: {status?.status || 'disconnected'}
           </span>
         </div>
       </div>
