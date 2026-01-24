@@ -21,6 +21,9 @@ router.use('/webhooks', webhookRoutes);
 router.use('/billing', billingRoutes);
 router.use('/ghl', ghlRoutes);
 
+// OAuth callback alias (GHL requires non-GHL named redirect URL)
+router.use('/oauth', ghlRoutes);
+
 // Admin routes
 router.use('/admin', adminRoutes);
 
