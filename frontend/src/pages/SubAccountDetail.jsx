@@ -314,11 +314,10 @@ export default function SubAccountDetail() {
       <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
         <h3 className="font-semibold text-blue-900 mb-3">Setup Instructions</h3>
         <ol className="list-decimal list-inside space-y-2 text-blue-800">
-          <li><strong>Connect GoHighLevel first</strong> - Click "Connect GoHighLevel" and select your location</li>
+          <li><strong>Connect GoHighLevel</strong> - Click "Connect GoHighLevel" and select your location</li>
+          <li><strong>Change the phone provider</strong> - In GHL, go to Settings and change your phone provider</li>
           <li><strong>Connect WhatsApp</strong> - Scan the QR code with your WhatsApp</li>
-          <li>In GHL, go to Settings → Phone System → Additional Settings</li>
-          <li>Change the SMS provider to use this WhatsApp connection</li>
-          <li>Send messages as "SMS" in GHL - they'll be delivered via WhatsApp!</li>
+          <li>Send messages in GHL - they'll be delivered via WhatsApp!</li>
         </ol>
       </div>
     </div>
