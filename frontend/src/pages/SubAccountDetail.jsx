@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { ArrowLeft, RefreshCw, Wifi, WifiOff, MapPin, MessageSquare, Send, ArrowDownLeft, ArrowUpRight, Image, FileText, Paperclip, X, Link, Unlink } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Wifi, WifiOff, Link, Unlink, CheckCircle, XCircle, CreditCard } from 'lucide-react'
 
 export default function SubAccountDetail() {
   const { id } = useParams()
@@ -14,15 +14,6 @@ export default function SubAccountDetail() {
   const [connecting, setConnecting] = useState(false)
   const [ghlStatus, setGhlStatus] = useState({ connected: false, loading: true })
   const [connectingGhl, setConnectingGhl] = useState(false)
-  const [conversations, setConversations] = useState([])
-  const [selectedContact, setSelectedContact] = useState(null)
-  const [messages, setMessages] = useState([])
-  const [loadingMessages, setLoadingMessages] = useState(false)
-  const [sendForm, setSendForm] = useState({ to: '', message: '' })
-  const [sending, setSending] = useState(false)
-  const [selectedFile, setSelectedFile] = useState(null)
-  const [uploading, setUploading] = useState(false)
-  const fileInputRef = useRef(null)
 
   const fetchSubAccount = useCallback(async () => {
     try {
@@ -42,15 +33,6 @@ export default function SubAccountDetail() {
       setStatus(data)
     } catch (error) {
       console.error('Failed to fetch status:', error)
-    }
-  }, [id])
-
-  const fetchConversations = useCallback(async () => {
-    try {
-      const { data } = await api.get(`/whatsapp/${id}/conversations`)
-      setConversations(data.conversations || [])
-    } catch (error) {
-      console.error('Failed to fetch conversations:', error)
     }
   }, [id])
 
@@ -74,38 +56,19 @@ export default function SubAccountDetail() {
     }
   }, [searchParams, fetchGhlStatus, fetchSubAccount])
 
-  const fetchMessages = async (contactNumber) => {
-    setLoadingMessages(true)
-    try {
-      const { data } = await api.get(`/whatsapp/${id}/messages`, {
-        params: { contact: contactNumber, limit: 100 }
-      })
-      setMessages(data.messages || [])
-    } catch (error) {
-      console.error('Failed to fetch messages:', error)
-    } finally {
-      setLoadingMessages(false)
-    }
-  }
-
   useEffect(() => {
     fetchSubAccount()
     fetchStatus()
-    fetchConversations()
     fetchGhlStatus()
 
-    // Poll for status and conversations updates
+    // Poll for status updates
     const interval = setInterval(() => {
       fetchStatus()
-      fetchConversations()
-      if (selectedContact) {
-        fetchMessages(selectedContact)
-      }
-    }, 5000)
+    }, 3000)
     return () => clearInterval(interval)
-  }, [fetchSubAccount, fetchStatus, fetchConversations, fetchGhlStatus, selectedContact])
+  }, [fetchSubAccount, fetchStatus, fetchGhlStatus])
 
-  const connect = async () => {
+  const connectWhatsApp = async () => {
     setConnecting(true)
     try {
       await api.post(`/whatsapp/${id}/connect`)
@@ -118,12 +81,12 @@ export default function SubAccountDetail() {
     }
   }
 
-  const disconnect = async () => {
-    if (!confirm('Are you sure you want to disconnect?')) return
+  const disconnectWhatsApp = async () => {
+    if (!confirm('Are you sure you want to disconnect WhatsApp?')) return
 
     try {
       await api.post(`/whatsapp/${id}/disconnect`)
-      toast.success('Disconnected')
+      toast.success('WhatsApp disconnected')
       fetchStatus()
     } catch (error) {
       toast.error('Failed to disconnect')
@@ -154,183 +117,116 @@ export default function SubAccountDetail() {
     }
   }
 
-  const selectConversation = (contactNumber) => {
-    setSelectedContact(contactNumber)
-    setSendForm({ ...sendForm, to: contactNumber })
-    fetchMessages(contactNumber)
-  }
-
-  const handleFileSelect = (e) => {
-    const file = e.target.files[0]
-    if (file) {
-      // Check file size (max 16MB)
-      if (file.size > 16 * 1024 * 1024) {
-        toast.error('File too large. Max 16MB allowed.')
-        return
-      }
-      setSelectedFile(file)
-    }
-  }
-
-  const clearSelectedFile = () => {
-    setSelectedFile(null)
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ''
-    }
-  }
-
-  const uploadFile = async (file) => {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('subAccountId', id)
-
-    const { data } = await api.post('/whatsapp/upload', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    })
-    return data
-  }
-
-  const sendMessage = async (e) => {
-    e.preventDefault()
-    if (!sendForm.to || (!sendForm.message && !selectedFile)) return
-
-    setSending(true)
-    try {
-      let mediaUrl = null
-      let messageType = 'text'
-      let fileName = null
-
-      // Upload file if selected
-      if (selectedFile) {
-        setUploading(true)
-        try {
-          const uploadResult = await uploadFile(selectedFile)
-          mediaUrl = uploadResult.url
-          fileName = selectedFile.name
-
-          // Determine message type
-          if (selectedFile.type.startsWith('image/')) {
-            messageType = 'image'
-          } else {
-            messageType = 'document'
-          }
-        } catch (error) {
-          toast.error('Failed to upload file')
-          setSending(false)
-          setUploading(false)
-          return
-        }
-        setUploading(false)
-      }
-
-      await api.post(`/whatsapp/${id}/send`, {
-        to: sendForm.to,
-        message: sendForm.message || fileName || 'Media',
-        type: messageType,
-        mediaUrl,
-        fileName
-      })
-
-      toast.success('Message sent!')
-      setSendForm({ ...sendForm, message: '' })
-      clearSelectedFile()
-
-      // Refresh messages
-      if (selectedContact) {
-        fetchMessages(selectedContact)
-      }
-      fetchConversations()
-    } catch (error) {
-      toast.error(error.response?.data?.error || 'Failed to send message')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  const formatTime = (date) => {
-    return new Date(date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
-
-  const formatDate = (date) => {
-    const d = new Date(date)
-    const today = new Date()
-    if (d.toDateString() === today.toDateString()) return 'Today'
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
-    if (d.toDateString() === yesterday.toDateString()) return 'Yesterday'
-    return d.toLocaleDateString()
-  }
-
   if (loading) {
     return <div className="text-center py-12">Loading...</div>
   }
 
+  const isFullyConnected = status?.status === 'connected' && ghlStatus.connected
+
   return (
-    <div className="h-[calc(100vh-120px)]">
+    <div>
       <button
         onClick={() => navigate('/sub-accounts')}
-        className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
+        className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6"
       >
         <ArrowLeft size={20} />
         Back to Sub-Accounts
       </button>
 
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">{subAccount?.name}</h1>
-          <p className="text-gray-600">
-            {subAccount?.phoneNumber || 'Not connected'} | Location: {subAccount?.ghlLocationId || 'Not set'}
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* GHL Status */}
-          {ghlStatus.connected ? (
-            <div className="flex items-center gap-2">
-              <span className="px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-700 flex items-center gap-1">
-                <Link size={14} /> GHL Connected
-              </span>
-              <button
-                onClick={disconnectGhl}
-                className="text-xs px-2 py-1 text-red-600 hover:bg-red-50 rounded"
-                title="Disconnect GHL"
-              >
-                <Unlink size={14} />
-              </button>
+      <div className="mb-8">
+        <h1 className="text-2xl font-bold text-gray-900">{subAccount?.name}</h1>
+        <p className="text-gray-600 mt-1">Location ID: {subAccount?.ghlLocationId || 'Not set'}</p>
+      </div>
+
+      {/* Status Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <div className={`p-4 rounded-lg border-2 ${status?.status === 'connected' ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
+          <div className="flex items-center gap-3">
+            {status?.status === 'connected' ? (
+              <CheckCircle className="text-green-500" size={24} />
+            ) : (
+              <XCircle className="text-gray-400" size={24} />
+            )}
+            <div>
+              <p className="font-medium">WhatsApp</p>
+              <p className="text-sm text-gray-600">
+                {status?.status === 'connected' ? status?.phoneNumber || 'Connected' : 'Not connected'}
+              </p>
             </div>
-          ) : (
-            <button
-              onClick={connectGhl}
-              disabled={connectingGhl}
-              className="px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 flex items-center gap-1"
-            >
-              <Link size={14} />
-              {connectingGhl ? 'Connecting...' : 'Connect GHL'}
-            </button>
-          )}
-          {/* WhatsApp Status */}
-          <span className={`px-3 py-1 rounded-full text-sm font-medium ${
-            status?.status === 'connected' ? 'bg-green-100 text-green-700' :
-            status?.status === 'qr_ready' ? 'bg-yellow-100 text-yellow-700' :
-            status?.status === 'connecting' ? 'bg-blue-100 text-blue-700' :
-            'bg-gray-100 text-gray-700'
-          }`}>
-            WA: {status?.status || 'disconnected'}
-          </span>
+          </div>
+        </div>
+
+        <div className={`p-4 rounded-lg border-2 ${ghlStatus.connected ? 'border-green-500 bg-green-50' : 'border-gray-200 bg-white'}`}>
+          <div className="flex items-center gap-3">
+            {ghlStatus.connected ? (
+              <CheckCircle className="text-green-500" size={24} />
+            ) : (
+              <XCircle className="text-gray-400" size={24} />
+            )}
+            <div>
+              <p className="font-medium">GoHighLevel</p>
+              <p className="text-sm text-gray-600">
+                {ghlStatus.connected ? 'Connected' : 'Not connected'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className={`p-4 rounded-lg border-2 ${subAccount?.isPaid ? 'border-green-500 bg-green-50' : 'border-yellow-500 bg-yellow-50'}`}>
+          <div className="flex items-center gap-3">
+            <CreditCard className={subAccount?.isPaid ? 'text-green-500' : 'text-yellow-500'} size={24} />
+            <div>
+              <p className="font-medium">Subscription</p>
+              <p className="text-sm text-gray-600">
+                {subAccount?.isPaid ? 'Active' : 'Not subscribed'}
+              </p>
+            </div>
+          </div>
         </div>
       </div>
 
-      {status?.status !== 'connected' ? (
-        <div className="bg-white rounded-lg shadow p-8 text-center">
-          <h2 className="text-lg font-semibold mb-4">WhatsApp Connection</h2>
+      {/* Connection Status Message */}
+      {isFullyConnected && (
+        <div className="mb-8 p-4 bg-green-100 border border-green-300 rounded-lg">
+          <p className="text-green-800 font-medium">
+            All connected! Messages sent as "SMS" in GoHighLevel will be delivered via WhatsApp.
+          </p>
+          <p className="text-green-700 text-sm mt-1">
+            Go to GHL → Settings → Phone System → Additional Settings → Change SMS provider to use this connection.
+          </p>
+        </div>
+      )}
 
-          {status?.qrCode ? (
-            <div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* WhatsApp Connection */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Wifi size={20} />
+            WhatsApp Connection
+          </h2>
+
+          {status?.status === 'connected' ? (
+            <div className="text-center py-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Wifi className="text-green-500" size={32} />
+              </div>
+              <p className="text-green-600 font-medium mb-1">Connected</p>
+              <p className="text-gray-600 mb-4">{status.phoneNumber}</p>
+              <button
+                onClick={disconnectWhatsApp}
+                className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : status?.qrCode ? (
+            <div className="text-center py-4">
               <p className="text-gray-600 mb-4">Scan this QR code with WhatsApp</p>
               <img
                 src={status.qrCode}
                 alt="QR Code"
                 className="mx-auto mb-4 border rounded-lg"
-                style={{ maxWidth: '256px' }}
+                style={{ maxWidth: '200px' }}
               />
               <button
                 onClick={fetchStatus}
@@ -341,188 +237,72 @@ export default function SubAccountDetail() {
               </button>
             </div>
           ) : (
-            <div>
+            <div className="text-center py-4">
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <WifiOff className="text-gray-400" size={32} />
               </div>
-              <p className="text-gray-600 mb-4">Not connected</p>
+              <p className="text-gray-600 mb-4">Connect your WhatsApp number</p>
               <button
-                onClick={connect}
+                onClick={connectWhatsApp}
                 disabled={connecting}
-                className="px-6 py-3 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+                className="px-6 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 disabled:opacity-50"
               >
                 {connecting ? 'Connecting...' : 'Connect WhatsApp'}
               </button>
             </div>
           )}
         </div>
-      ) : (
-        <div className="bg-white rounded-lg shadow flex h-[calc(100%-100px)]">
-          {/* Conversations List */}
-          <div className="w-80 border-r flex flex-col">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h3 className="font-semibold">Conversations</h3>
+
+        {/* GHL Connection */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <Link size={20} />
+            GoHighLevel Connection
+          </h2>
+
+          {ghlStatus.connected ? (
+            <div className="text-center py-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Link className="text-green-500" size={32} />
+              </div>
+              <p className="text-green-600 font-medium mb-1">Connected</p>
+              <p className="text-gray-600 mb-4">Location: {subAccount?.ghlLocationId}</p>
               <button
-                onClick={disconnect}
-                className="text-xs px-2 py-1 bg-red-100 text-red-600 rounded hover:bg-red-200"
+                onClick={disconnectGhl}
+                className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
               >
                 Disconnect
               </button>
             </div>
-            <div className="flex-1 overflow-y-auto">
-              {conversations.length === 0 ? (
-                <div className="p-4 text-center text-gray-500">
-                  <MessageSquare className="mx-auto mb-2 text-gray-300" size={32} />
-                  <p>No conversations yet</p>
-                </div>
-              ) : (
-                conversations.map((conv) => (
-                  <div
-                    key={conv.contactNumber}
-                    onClick={() => selectConversation(conv.contactNumber)}
-                    className={`p-4 border-b cursor-pointer hover:bg-gray-50 ${
-                      selectedContact === conv.contactNumber ? 'bg-primary-50' : ''
-                    }`}
-                  >
-                    <div className="flex justify-between items-start">
-                      <p className="font-medium text-gray-900">{conv.contactNumber}</p>
-                      <span className="text-xs text-gray-500">{formatTime(conv.lastMessageAt)}</span>
-                    </div>
-                    <p className="text-sm text-gray-600 truncate mt-1">
-                      {conv.direction === 'outbound' && <ArrowUpRight size={12} className="inline mr-1" />}
-                      {conv.direction === 'inbound' && <ArrowDownLeft size={12} className="inline mr-1" />}
-                      {conv.lastMessage || 'Media message'}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-            {/* New message input */}
-            <div className="p-3 border-t">
-              <input
-                type="text"
-                value={sendForm.to}
-                onChange={(e) => setSendForm({ ...sendForm, to: e.target.value })}
-                placeholder="New chat: Enter phone number"
-                className="w-full px-3 py-2 border rounded text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Messages Panel */}
-          <div className="flex-1 flex flex-col">
-            {selectedContact ? (
-              <>
-                <div className="p-4 border-b bg-gray-50">
-                  <h3 className="font-semibold">{selectedContact}</h3>
-                </div>
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
-                  {loadingMessages ? (
-                    <div className="text-center py-8 text-gray-500">Loading messages...</div>
-                  ) : messages.length === 0 ? (
-                    <div className="text-center py-8 text-gray-500">No messages</div>
-                  ) : (
-                    [...messages].reverse().map((msg) => (
-                      <div
-                        key={msg.id}
-                        className={`flex ${msg.direction === 'outbound' ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div
-                          className={`max-w-[70%] rounded-lg px-4 py-2 ${
-                            msg.direction === 'outbound'
-                              ? 'bg-primary-500 text-white'
-                              : 'bg-gray-100 text-gray-900'
-                          }`}
-                        >
-                          {msg.messageType === 'image' && (
-                            <div className="flex items-center gap-1 text-sm opacity-80 mb-1">
-                              <Image size={14} /> Image
-                            </div>
-                          )}
-                          {msg.messageType === 'document' && (
-                            <div className="flex items-center gap-1 text-sm opacity-80 mb-1">
-                              <FileText size={14} /> Document
-                            </div>
-                          )}
-                          <p className="whitespace-pre-wrap">{msg.content || `[${msg.messageType}]`}</p>
-                          <p className={`text-xs mt-1 ${
-                            msg.direction === 'outbound' ? 'text-primary-200' : 'text-gray-500'
-                          }`}>
-                            {formatTime(msg.createdAt)}
-                            {msg.status === 'failed' && ' • Failed'}
-                          </p>
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <form onSubmit={sendMessage} className="p-4 border-t">
-                  {/* Selected file preview */}
-                  {selectedFile && (
-                    <div className="flex items-center gap-2 mb-2 p-2 bg-gray-100 rounded">
-                      {selectedFile.type.startsWith('image/') ? (
-                        <Image size={16} className="text-blue-500" />
-                      ) : (
-                        <FileText size={16} className="text-orange-500" />
-                      )}
-                      <span className="text-sm flex-1 truncate">{selectedFile.name}</span>
-                      <button
-                        type="button"
-                        onClick={clearSelectedFile}
-                        className="text-gray-500 hover:text-red-500"
-                      >
-                        <X size={16} />
-                      </button>
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      onChange={handleFileSelect}
-                      accept="image/*,.pdf,.doc,.docx"
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="px-3 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
-                      title="Attach file"
-                    >
-                      <Paperclip size={20} />
-                    </button>
-                    <input
-                      type="text"
-                      value={sendForm.message}
-                      onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
-                      placeholder={selectedFile ? "Add a caption..." : "Type a message..."}
-                      className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500"
-                    />
-                    <button
-                      type="submit"
-                      disabled={sending || (!sendForm.message && !selectedFile)}
-                      className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
-                    >
-                      {uploading ? (
-                        <RefreshCw size={20} className="animate-spin" />
-                      ) : (
-                        <Send size={20} />
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </>
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-gray-500">
-                <div className="text-center">
-                  <MessageSquare className="mx-auto mb-2 text-gray-300" size={48} />
-                  <p>Select a conversation or enter a phone number</p>
-                </div>
+          ) : (
+            <div className="text-center py-4">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Unlink className="text-gray-400" size={32} />
               </div>
-            )}
-          </div>
+              <p className="text-gray-600 mb-4">Connect to your GoHighLevel account</p>
+              <button
+                onClick={connectGhl}
+                disabled={connectingGhl}
+                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+              >
+                {connectingGhl ? 'Connecting...' : 'Connect GoHighLevel'}
+              </button>
+            </div>
+          )}
         </div>
-      )}
+      </div>
+
+      {/* Instructions */}
+      <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
+        <h3 className="font-semibold text-blue-900 mb-3">Setup Instructions</h3>
+        <ol className="list-decimal list-inside space-y-2 text-blue-800">
+          <li>Connect your WhatsApp number by scanning the QR code</li>
+          <li>Click "Connect GoHighLevel" and authorize in your GHL account</li>
+          <li>In GHL, go to Settings → Phone System → Additional Settings</li>
+          <li>Change the SMS provider to use this WhatsApp connection</li>
+          <li>Send messages as "SMS" in GHL - they'll be delivered via WhatsApp!</li>
+        </ol>
+      </div>
     </div>
   )
 }
