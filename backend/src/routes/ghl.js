@@ -31,7 +31,12 @@ router.get('/auth-url/:subAccountId', authenticateJWT, async (req, res) => {
 // OAuth callback handler
 router.get('/callback', async (req, res) => {
   try {
-    const { code, state } = req.query;
+    const { code } = req.query;
+    // State can come back as an array if duplicated in URL - handle both cases
+    let state = req.query.state;
+    if (Array.isArray(state)) {
+      state = state[0];
+    }
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
     if (!code) {
@@ -41,7 +46,7 @@ router.get('/callback', async (req, res) => {
     // Decode state to get customer and sub-account IDs (URL-safe base64)
     let customerId, subAccountId;
 
-    logger.info('GHL callback received', { code: code ? 'present' : 'missing', state: state || 'missing' });
+    logger.info('GHL callback received', { code: code ? 'present' : 'missing', state: state || 'missing', stateIsArray: Array.isArray(req.query.state) });
 
     if (!state) {
       logger.error('No state parameter received');
