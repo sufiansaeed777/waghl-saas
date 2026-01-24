@@ -16,7 +16,12 @@ class GHLService {
 
   // Generate OAuth authorization URL
   getAuthorizationUrl(customerId, subAccountId = null) {
-    const state = Buffer.from(JSON.stringify({ customerId, subAccountId })).toString('base64');
+    // Use URL-safe base64 encoding for state
+    const stateData = JSON.stringify({ customerId, subAccountId });
+    const state = Buffer.from(stateData).toString('base64')
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=/g, '');
     // Extract version_id from client_id (base ID without suffix)
     const versionId = this.clientId ? this.clientId.split('-')[0] : '';
     const params = new URLSearchParams({

@@ -38,13 +38,22 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${frontendUrl}/sub-accounts?ghl_error=no_code`);
     }
 
-    // Decode state to get customer and sub-account IDs
+    // Decode state to get customer and sub-account IDs (URL-safe base64)
     let customerId, subAccountId;
     try {
-      const stateData = JSON.parse(Buffer.from(state, 'base64').toString());
+      // Convert URL-safe base64 back to standard base64
+      let base64State = state
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+      // Add padding if needed
+      while (base64State.length % 4) {
+        base64State += '=';
+      }
+      const stateData = JSON.parse(Buffer.from(base64State, 'base64').toString());
       customerId = stateData.customerId;
       subAccountId = stateData.subAccountId;
     } catch (e) {
+      logger.error('Failed to decode state:', e.message, 'State:', state);
       return res.redirect(`${frontendUrl}/sub-accounts?ghl_error=invalid_state`);
     }
 
