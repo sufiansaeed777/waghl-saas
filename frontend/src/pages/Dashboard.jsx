@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
-import { Smartphone, Wifi, WifiOff, Plus } from 'lucide-react'
+import toast from 'react-hot-toast'
+import { Smartphone, Wifi, WifiOff, Plus, CreditCard, ExternalLink } from 'lucide-react'
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -25,6 +26,16 @@ export default function Dashboard() {
   }
 
   const connectedCount = subAccounts.filter(s => s.status === 'connected').length
+  const paidCount = subAccounts.filter(s => s.isPaid).length
+
+  const openBillingPortal = async () => {
+    try {
+      const { data } = await api.get('/billing/portal')
+      window.open(data.url, '_blank')
+    } catch (error) {
+      toast.error('Failed to open billing portal')
+    }
+  }
 
   return (
     <div>
@@ -34,7 +45,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -69,6 +80,42 @@ export default function Dashboard() {
               <WifiOff className="text-gray-500" size={24} />
             </div>
           </div>
+        </div>
+
+        <div className="bg-white rounded-lg shadow p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm text-gray-600">Paid Sub-Accounts</p>
+              <p className="text-3xl font-bold text-blue-600 mt-1">{paidCount}</p>
+            </div>
+            <div className="bg-blue-100 p-3 rounded-full">
+              <CreditCard className="text-blue-500" size={24} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Subscription Status */}
+      <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Subscription Status</h2>
+            <p className="text-gray-600 mt-1">
+              {user?.subscriptionStatus === 'active' ? (
+                <span className="text-green-600">Your subscription is active</span>
+              ) : (
+                <span className="text-gray-500">No active subscription</span>
+              )}
+            </p>
+          </div>
+          <button
+            onClick={openBillingPortal}
+            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+          >
+            <CreditCard size={18} />
+            Manage Billing
+            <ExternalLink size={14} />
+          </button>
         </div>
       </div>
 

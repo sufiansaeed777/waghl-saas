@@ -48,6 +48,16 @@ module.exports = (sequelize) => {
       type: DataTypes.STRING,
       allowNull: true
     },
+    // Plan type: 'free' (granted by admin), 'standard' ($29), 'volume' ($19 for 10+)
+    planType: {
+      type: DataTypes.ENUM('free', 'standard', 'volume'),
+      defaultValue: 'standard'
+    },
+    // Admin can grant unlimited free access
+    hasUnlimitedAccess: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true

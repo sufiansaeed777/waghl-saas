@@ -24,7 +24,7 @@ router.get('/', authenticateJWT, async (req, res) => {
 // Create new sub-account
 router.post('/', authenticateJWT, async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, ghlLocationId } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Name is required' });
@@ -33,6 +33,7 @@ router.post('/', authenticateJWT, async (req, res) => {
     const subAccount = await SubAccount.create({
       customerId: req.customer.id,
       name,
+      ghlLocationId: ghlLocationId || null,
       isPaid: req.customer.subscriptionStatus === 'active'
     });
 

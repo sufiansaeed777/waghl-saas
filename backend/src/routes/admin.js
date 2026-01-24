@@ -129,6 +129,59 @@ router.put('/sub-accounts/:id/toggle', async (req, res) => {
   }
 });
 
+// Grant/revoke unlimited access for a customer
+router.put('/customers/:id/access', async (req, res) => {
+  try {
+    const { hasUnlimitedAccess, planType } = req.body;
+    const customer = await Customer.findByPk(req.params.id);
+
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Update access settings
+    if (typeof hasUnlimitedAccess === 'boolean') {
+      customer.hasUnlimitedAccess = hasUnlimitedAccess;
+
+      // If granting unlimited access, set plan to free and activate subscription
+      if (hasUnlimitedAccess) {
+        customer.planType = 'free';
+        customer.subscriptionStatus = 'active';
+      }
+    }
+
+    if (planType && ['free', 'standard', 'volume'].includes(planType)) {
+      customer.planType = planType;
+
+      // If setting to free plan, activate subscription
+      if (planType === 'free') {
+        customer.subscriptionStatus = 'active';
+        customer.hasUnlimitedAccess = true;
+      }
+    }
+
+    await customer.save();
+
+    // Also update all sub-accounts to paid if unlimited access
+    if (customer.hasUnlimitedAccess) {
+      await SubAccount.update(
+        { isPaid: true },
+        { where: { customerId: customer.id } }
+      );
+    }
+
+    logger.info(`Admin updated access for customer ${customer.id}: unlimited=${customer.hasUnlimitedAccess}, plan=${customer.planType}`);
+
+    res.json({
+      message: 'Customer access updated',
+      customer: customer.toJSON()
+    });
+  } catch (error) {
+    logger.error('Admin update access error:', error);
+    res.status(500).json({ error: 'Failed to update customer access' });
+  }
+});
+
 // Get dashboard stats
 router.get('/stats', async (req, res) => {
   try {

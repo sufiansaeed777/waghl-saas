@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Eye } from 'lucide-react'
+import { Plus, Trash2, Eye, CreditCard, MapPin } from 'lucide-react'
 
 export default function SubAccounts() {
   const [subAccounts, setSubAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newName, setNewName] = useState('')
+  const [newLocationId, setNewLocationId] = useState('')
   const [creating, setCreating] = useState(false)
 
   useEffect(() => {
@@ -31,15 +32,28 @@ export default function SubAccounts() {
     setCreating(true)
 
     try {
-      await api.post('/sub-accounts', { name: newName })
+      await api.post('/sub-accounts', {
+        name: newName,
+        ghlLocationId: newLocationId || undefined
+      })
       toast.success('Sub-account created!')
       setShowCreateModal(false)
       setNewName('')
+      setNewLocationId('')
       fetchSubAccounts()
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to create sub-account')
     } finally {
       setCreating(false)
+    }
+  }
+
+  const handlePayment = async (subAccountId) => {
+    try {
+      const { data } = await api.post(`/billing/checkout/${subAccountId}`)
+      window.location.href = data.url
+    } catch (error) {
+      toast.error('Failed to start checkout')
     }
   }
 
@@ -91,8 +105,9 @@ export default function SubAccounts() {
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
@@ -105,6 +120,9 @@ export default function SubAccounts() {
                   <td className="px-6 py-4 text-gray-600">
                     {account.phoneNumber || '-'}
                   </td>
+                  <td className="px-6 py-4 text-gray-600 text-sm font-mono">
+                    {account.ghlLocationId || '-'}
+                  </td>
                   <td className="px-6 py-4">
                     <span className={`text-sm px-2 py-1 rounded ${
                       account.status === 'connected' ? 'bg-green-100 text-green-700' :
@@ -115,8 +133,20 @@ export default function SubAccounts() {
                       {account.status}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-gray-600 text-sm">
-                    {new Date(account.createdAt).toLocaleDateString()}
+                  <td className="px-6 py-4">
+                    {account.isPaid ? (
+                      <span className="text-sm px-2 py-1 rounded bg-green-100 text-green-700">
+                        Paid
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => handlePayment(account.id)}
+                        className="flex items-center gap-1 text-sm px-2 py-1 rounded bg-primary-100 text-primary-700 hover:bg-primary-200"
+                      >
+                        <CreditCard size={14} />
+                        Pay
+                      </button>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
@@ -160,10 +190,32 @@ export default function SubAccounts() {
                   placeholder="e.g., Marketing Team"
                 />
               </div>
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <div className="flex items-center gap-2">
+                    <MapPin size={16} />
+                    GHL Location ID
+                  </div>
+                </label>
+                <input
+                  type="text"
+                  value={newLocationId}
+                  onChange={(e) => setNewLocationId(e.target.value)}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
+                  placeholder="e.g., ve9EPM428h8vShlRW1KT"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Find this in your GHL sub-account Settings → Business Info
+                </p>
+              </div>
               <div className="flex justify-end gap-3">
                 <button
                   type="button"
-                  onClick={() => setShowCreateModal(false)}
+                  onClick={() => {
+                    setShowCreateModal(false)
+                    setNewName('')
+                    setNewLocationId('')
+                  }}
                   className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
                 >
                   Cancel
