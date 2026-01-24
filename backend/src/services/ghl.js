@@ -50,6 +50,14 @@ class GHLService {
         user_type: 'Location'
       });
 
+      logger.info('GHL token exchange request', {
+        url: GHL_TOKEN_URL,
+        client_id: this.clientId,
+        redirect_uri: this.redirectUri,
+        code_length: code?.length,
+        code_preview: code?.substring(0, 20) + '...'
+      });
+
       const response = await axios.post(GHL_TOKEN_URL, params.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -57,6 +65,7 @@ class GHLService {
         }
       });
 
+      logger.info('GHL token exchange success', { locationId: response.data?.locationId });
       return response.data;
     } catch (error) {
       logger.error('GHL token exchange error:', error.response?.data || error.message);
