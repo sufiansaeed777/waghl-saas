@@ -17,6 +17,8 @@ class GHLService {
   // Generate OAuth authorization URL
   getAuthorizationUrl(customerId, subAccountId = null) {
     const state = Buffer.from(JSON.stringify({ customerId, subAccountId })).toString('base64');
+    // Extract version_id from client_id (base ID without suffix)
+    const versionId = this.clientId ? this.clientId.split('-')[0] : '';
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: this.clientId,
@@ -24,6 +26,10 @@ class GHLService {
       scope: this.scopes,
       state
     });
+    // Add version_id for draft/unpublished apps
+    if (versionId) {
+      params.append('version_id', versionId);
+    }
     return `${GHL_AUTH_URL}?${params.toString()}`;
   }
 
