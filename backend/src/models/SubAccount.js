@@ -84,5 +84,14 @@ module.exports = (sequelize) => {
     }
   });
 
+  // Hide sensitive data in API responses
+  SubAccount.prototype.toJSON = function() {
+    const values = { ...this.get() };
+    delete values.ghlAccessToken;
+    delete values.ghlRefreshToken;
+    delete values.sessionData;
+    return values;
+  };
+
   return SubAccount;
 };

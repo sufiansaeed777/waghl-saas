@@ -20,11 +20,15 @@ app.use(cors({
   credentials: true
 }));
 
-// Rate limiting
+// Rate limiting (exclude webhooks)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 100, // limit each IP to 100 requests per windowMs
-  message: { error: 'Too many requests, please try again later.' }
+  message: { error: 'Too many requests, please try again later.' },
+  skip: (req) => {
+    // Skip rate limiting for webhook endpoints
+    return req.path.includes('/webhook') || req.path.includes('/callback');
+  }
 });
 app.use('/api/', limiter);
 

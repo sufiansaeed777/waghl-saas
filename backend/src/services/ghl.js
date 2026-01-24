@@ -30,14 +30,16 @@ class GHLService {
   // Exchange authorization code for tokens
   async exchangeCodeForTokens(code) {
     try {
-      const response = await axios.post(GHL_TOKEN_URL, {
+      const params = new URLSearchParams({
         client_id: this.clientId,
         client_secret: this.clientSecret,
         grant_type: 'authorization_code',
         code,
         redirect_uri: this.redirectUri,
         user_type: 'Location'
-      }, {
+      });
+
+      const response = await axios.post(GHL_TOKEN_URL, params.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json'
@@ -58,14 +60,16 @@ class GHLService {
         throw new Error('No refresh token available');
       }
 
-      const response = await axios.post(GHL_TOKEN_URL, {
+      const params = new URLSearchParams({
         client_id: this.clientId,
         client_secret: this.clientSecret,
         grant_type: 'refresh_token',
         refresh_token: entity.ghlRefreshToken,
         redirect_uri: this.redirectUri,
         user_type: 'Location'
-      }, {
+      });
+
+      const response = await axios.post(GHL_TOKEN_URL, params.toString(), {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json'

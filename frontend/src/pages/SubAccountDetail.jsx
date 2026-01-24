@@ -51,10 +51,13 @@ export default function SubAccountDetail() {
       toast.success('GoHighLevel connected successfully!')
       fetchGhlStatus()
       fetchSubAccount()
+      // Clear search params to avoid showing toast on refresh
+      navigate(`/sub-accounts/${id}`, { replace: true })
     } else if (searchParams.get('ghl_error')) {
       toast.error(`GHL connection failed: ${searchParams.get('ghl_error')}`)
+      navigate(`/sub-accounts/${id}`, { replace: true })
     }
-  }, [searchParams, fetchGhlStatus, fetchSubAccount])
+  }, [searchParams, fetchGhlStatus, fetchSubAccount, navigate, id])
 
   useEffect(() => {
     fetchSubAccount()
