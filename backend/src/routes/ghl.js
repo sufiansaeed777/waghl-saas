@@ -31,8 +31,11 @@ router.get('/auth-url/:subAccountId', authenticateJWT, async (req, res) => {
 // OAuth callback handler
 router.get('/callback', async (req, res) => {
   try {
-    const { code } = req.query;
-    // State can come back as an array if duplicated in URL - handle both cases
+    // Both code and state can come back as arrays if duplicated in URL - handle both cases
+    let code = req.query.code;
+    if (Array.isArray(code)) {
+      code = code[0];
+    }
     let state = req.query.state;
     if (Array.isArray(state)) {
       state = state[0];
