@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { ArrowLeft, RefreshCw, Wifi, WifiOff, MapPin, MessageSquare, Send, ArrowDownLeft, ArrowUpRight, Image, FileText } from 'lucide-react'
+import { ArrowLeft, RefreshCw, Wifi, WifiOff, MapPin, MessageSquare, Send, ArrowDownLeft, ArrowUpRight, Image, FileText, Paperclip, X } from 'lucide-react'
 
 export default function SubAccountDetail() {
   const { id } = useParams()
@@ -17,6 +17,9 @@ export default function SubAccountDetail() {
   const [loadingMessages, setLoadingMessages] = useState(false)
   const [sendForm, setSendForm] = useState({ to: '', message: '' })
   const [sending, setSending] = useState(false)
+  const [selectedFile, setSelectedFile] = useState(null)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef(null)
 
   const fetchSubAccount = useCallback(async () => {
     try {
@@ -109,18 +112,81 @@ export default function SubAccountDetail() {
     fetchMessages(contactNumber)
   }
 
+  const handleFileSelect = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      // Check file size (max 16MB)
+      if (file.size > 16 * 1024 * 1024) {
+        toast.error('File too large. Max 16MB allowed.')
+        return
+      }
+      setSelectedFile(file)
+    }
+  }
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const uploadFile = async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('subAccountId', id)
+
+    const { data } = await api.post('/whatsapp/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+    return data
+  }
+
   const sendMessage = async (e) => {
     e.preventDefault()
-    if (!sendForm.to || !sendForm.message) return
+    if (!sendForm.to || (!sendForm.message && !selectedFile)) return
 
     setSending(true)
     try {
+      let mediaUrl = null
+      let messageType = 'text'
+      let fileName = null
+
+      // Upload file if selected
+      if (selectedFile) {
+        setUploading(true)
+        try {
+          const uploadResult = await uploadFile(selectedFile)
+          mediaUrl = uploadResult.url
+          fileName = selectedFile.name
+
+          // Determine message type
+          if (selectedFile.type.startsWith('image/')) {
+            messageType = 'image'
+          } else {
+            messageType = 'document'
+          }
+        } catch (error) {
+          toast.error('Failed to upload file')
+          setSending(false)
+          setUploading(false)
+          return
+        }
+        setUploading(false)
+      }
+
       await api.post(`/whatsapp/${id}/send`, {
         to: sendForm.to,
-        message: sendForm.message
+        message: sendForm.message || fileName || 'Media',
+        type: messageType,
+        mediaUrl,
+        fileName
       })
+
       toast.success('Message sent!')
       setSendForm({ ...sendForm, message: '' })
+      clearSelectedFile()
+
       // Refresh messages
       if (selectedContact) {
         fetchMessages(selectedContact)
@@ -317,21 +383,60 @@ export default function SubAccountDetail() {
                     ))
                   )}
                 </div>
-                <form onSubmit={sendMessage} className="p-4 border-t flex gap-2">
-                  <input
-                    type="text"
-                    value={sendForm.message}
-                    onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
-                    placeholder="Type a message..."
-                    className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500"
-                  />
-                  <button
-                    type="submit"
-                    disabled={sending || !sendForm.message}
-                    className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
-                  >
-                    <Send size={20} />
-                  </button>
+                <form onSubmit={sendMessage} className="p-4 border-t">
+                  {/* Selected file preview */}
+                  {selectedFile && (
+                    <div className="flex items-center gap-2 mb-2 p-2 bg-gray-100 rounded">
+                      {selectedFile.type.startsWith('image/') ? (
+                        <Image size={16} className="text-blue-500" />
+                      ) : (
+                        <FileText size={16} className="text-orange-500" />
+                      )}
+                      <span className="text-sm flex-1 truncate">{selectedFile.name}</span>
+                      <button
+                        type="button"
+                        onClick={clearSelectedFile}
+                        className="text-gray-500 hover:text-red-500"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      accept="image/*,.pdf,.doc,.docx"
+                      className="hidden"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="px-3 py-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+                      title="Attach file"
+                    >
+                      <Paperclip size={20} />
+                    </button>
+                    <input
+                      type="text"
+                      value={sendForm.message}
+                      onChange={(e) => setSendForm({ ...sendForm, message: e.target.value })}
+                      placeholder={selectedFile ? "Add a caption..." : "Type a message..."}
+                      className="flex-1 px-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={sending || (!sendForm.message && !selectedFile)}
+                      className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+                    >
+                      {uploading ? (
+                        <RefreshCw size={20} className="animate-spin" />
+                      ) : (
+                        <Send size={20} />
+                      )}
+                    </button>
+                  </div>
                 </form>
               </>
             ) : (
