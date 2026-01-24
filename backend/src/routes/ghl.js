@@ -40,6 +40,14 @@ router.get('/callback', async (req, res) => {
 
     // Decode state to get customer and sub-account IDs (URL-safe base64)
     let customerId, subAccountId;
+
+    logger.info('GHL callback received', { code: code ? 'present' : 'missing', state: state || 'missing' });
+
+    if (!state) {
+      logger.error('No state parameter received');
+      return res.redirect(`${frontendUrl}/sub-accounts?ghl_error=invalid_state`);
+    }
+
     try {
       // Convert URL-safe base64 back to standard base64
       let base64State = state
@@ -49,11 +57,15 @@ router.get('/callback', async (req, res) => {
       while (base64State.length % 4) {
         base64State += '=';
       }
-      const stateData = JSON.parse(Buffer.from(base64State, 'base64').toString());
+      logger.info('Decoding state', { original: state, converted: base64State });
+      const decoded = Buffer.from(base64State, 'base64').toString();
+      logger.info('Decoded state string', { decoded });
+      const stateData = JSON.parse(decoded);
       customerId = stateData.customerId;
       subAccountId = stateData.subAccountId;
+      logger.info('State parsed successfully', { customerId, subAccountId });
     } catch (e) {
-      logger.error('Failed to decode state:', e.message, 'State:', state);
+      logger.error('Failed to decode state', { error: e.message, state: state });
       return res.redirect(`${frontendUrl}/sub-accounts?ghl_error=invalid_state`);
     }
 
