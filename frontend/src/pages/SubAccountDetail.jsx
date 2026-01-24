@@ -201,14 +201,67 @@ export default function SubAccountDetail() {
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* WhatsApp Connection */}
+        {/* Step 1: GHL Connection */}
         <div className="bg-white rounded-lg shadow p-6">
           <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center text-sm">1</span>
+            <Link size={20} />
+            GoHighLevel Connection
+          </h2>
+
+          {ghlStatus.connected ? (
+            <div className="text-center py-4">
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Link className="text-green-500" size={32} />
+              </div>
+              <p className="text-green-600 font-medium mb-1">Connected</p>
+              <p className="text-gray-600 mb-4">Location: {subAccount?.ghlLocationId}</p>
+              <button
+                onClick={disconnectGhl}
+                className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
+              >
+                Disconnect
+              </button>
+            </div>
+          ) : (
+            <div className="text-center py-4">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Unlink className="text-gray-400" size={32} />
+              </div>
+              <p className="text-gray-600 mb-4">Connect to your GoHighLevel account first</p>
+              <button
+                onClick={connectGhl}
+                disabled={connectingGhl}
+                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
+              >
+                {connectingGhl ? 'Connecting...' : 'Connect GoHighLevel'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Step 2: WhatsApp Connection */}
+        <div className={`bg-white rounded-lg shadow p-6 ${!ghlStatus.connected ? 'opacity-60' : ''}`}>
+          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+            <span className={`w-6 h-6 ${ghlStatus.connected ? 'bg-green-500' : 'bg-gray-400'} text-white rounded-full flex items-center justify-center text-sm`}>2</span>
             <Wifi size={20} />
             WhatsApp Connection
           </h2>
 
-          {status?.status === 'connected' ? (
+          {!ghlStatus.connected ? (
+            <div className="text-center py-4">
+              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <WifiOff className="text-gray-400" size={32} />
+              </div>
+              <p className="text-gray-500 mb-4">Connect GoHighLevel first to enable WhatsApp</p>
+              <button
+                disabled
+                className="px-6 py-2 bg-gray-300 text-gray-500 rounded-lg cursor-not-allowed"
+              >
+                Connect WhatsApp
+              </button>
+            </div>
+          ) : status?.status === 'connected' ? (
             <div className="text-center py-4">
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Wifi className="text-green-500" size={32} />
@@ -255,52 +308,14 @@ export default function SubAccountDetail() {
             </div>
           )}
         </div>
-
-        {/* GHL Connection */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Link size={20} />
-            GoHighLevel Connection
-          </h2>
-
-          {ghlStatus.connected ? (
-            <div className="text-center py-4">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Link className="text-green-500" size={32} />
-              </div>
-              <p className="text-green-600 font-medium mb-1">Connected</p>
-              <p className="text-gray-600 mb-4">Location: {subAccount?.ghlLocationId}</p>
-              <button
-                onClick={disconnectGhl}
-                className="px-4 py-2 bg-red-100 text-red-600 rounded-lg hover:bg-red-200"
-              >
-                Disconnect
-              </button>
-            </div>
-          ) : (
-            <div className="text-center py-4">
-              <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Unlink className="text-gray-400" size={32} />
-              </div>
-              <p className="text-gray-600 mb-4">Connect to your GoHighLevel account</p>
-              <button
-                onClick={connectGhl}
-                disabled={connectingGhl}
-                className="px-6 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:opacity-50"
-              >
-                {connectingGhl ? 'Connecting...' : 'Connect GoHighLevel'}
-              </button>
-            </div>
-          )}
-        </div>
       </div>
 
       {/* Instructions */}
       <div className="mt-8 bg-blue-50 border border-blue-200 rounded-lg p-6">
         <h3 className="font-semibold text-blue-900 mb-3">Setup Instructions</h3>
         <ol className="list-decimal list-inside space-y-2 text-blue-800">
-          <li>Connect your WhatsApp number by scanning the QR code</li>
-          <li>Click "Connect GoHighLevel" and authorize in your GHL account</li>
+          <li><strong>Connect GoHighLevel first</strong> - Click "Connect GoHighLevel" and select your location</li>
+          <li><strong>Connect WhatsApp</strong> - Scan the QR code with your WhatsApp</li>
           <li>In GHL, go to Settings → Phone System → Additional Settings</li>
           <li>Change the SMS provider to use this WhatsApp connection</li>
           <li>Send messages as "SMS" in GHL - they'll be delivered via WhatsApp!</li>
