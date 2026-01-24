@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { SubAccount } = require('../models');
+const { SubAccount, Message } = require('../models');
 const { authenticateJWT, authenticateApiKey } = require('../middleware/auth');
 const whatsappService = require('../services/whatsapp');
 const logger = require('../utils/logger');
@@ -173,6 +173,133 @@ router.get('/status', authenticateApiKey, async (req, res) => {
   } catch (error) {
     logger.error('API Get status error:', error);
     res.status(500).json({ error: 'Failed to get status' });
+  }
+});
+
+// Get messages for a sub-account
+router.get('/:subAccountId/messages', authenticateJWT, async (req, res) => {
+  try {
+    const subAccount = await SubAccount.findOne({
+      where: { id: req.params.subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    const { page = 1, limit = 50, contact } = req.query;
+    const offset = (page - 1) * limit;
+
+    const where = { subAccountId: subAccount.id };
+
+    // Filter by contact phone number if provided
+    if (contact) {
+      const { Op } = require('sequelize');
+      where[Op.or] = [
+        { fromNumber: contact },
+        { toNumber: contact }
+      ];
+    }
+
+    const { count, rows: messages } = await Message.findAndCountAll({
+      where,
+      order: [['createdAt', 'DESC']],
+      limit: parseInt(limit),
+      offset: parseInt(offset)
+    });
+
+    res.json({
+      messages,
+      pagination: {
+        total: count,
+        page: parseInt(page),
+        pages: Math.ceil(count / limit)
+      }
+    });
+  } catch (error) {
+    logger.error('Get messages error:', error);
+    res.status(500).json({ error: 'Failed to get messages' });
+  }
+});
+
+// Get unique contacts (conversations) for a sub-account
+router.get('/:subAccountId/conversations', authenticateJWT, async (req, res) => {
+  try {
+    const subAccount = await SubAccount.findOne({
+      where: { id: req.params.subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    const { Op } = require('sequelize');
+    const sequelize = require('../models').sequelize;
+
+    // Get unique contacts with their last message
+    const conversations = await Message.findAll({
+      where: { subAccountId: subAccount.id },
+      attributes: [
+        [sequelize.fn('DISTINCT', sequelize.col('fromNumber')), 'contactNumber'],
+        [sequelize.fn('MAX', sequelize.col('createdAt')), 'lastMessageAt']
+      ],
+      group: ['fromNumber'],
+      order: [[sequelize.fn('MAX', sequelize.col('createdAt')), 'DESC']],
+      raw: true
+    });
+
+    // Get last message for each conversation
+    const conversationsWithLastMessage = await Promise.all(
+      conversations.map(async (conv) => {
+        const lastMessage = await Message.findOne({
+          where: {
+            subAccountId: subAccount.id,
+            [Op.or]: [
+              { fromNumber: conv.contactNumber },
+              { toNumber: conv.contactNumber }
+            ]
+          },
+          order: [['createdAt', 'DESC']]
+        });
+
+        const messageCount = await Message.count({
+          where: {
+            subAccountId: subAccount.id,
+            [Op.or]: [
+              { fromNumber: conv.contactNumber },
+              { toNumber: conv.contactNumber }
+            ]
+          }
+        });
+
+        return {
+          contactNumber: conv.contactNumber === subAccount.phoneNumber
+            ? lastMessage?.toNumber
+            : conv.contactNumber,
+          lastMessage: lastMessage?.content,
+          lastMessageAt: lastMessage?.createdAt,
+          messageCount,
+          direction: lastMessage?.direction
+        };
+      })
+    );
+
+    // Filter out self and deduplicate
+    const uniqueConversations = conversationsWithLastMessage
+      .filter(c => c.contactNumber && c.contactNumber !== subAccount.phoneNumber)
+      .reduce((acc, curr) => {
+        const existing = acc.find(c => c.contactNumber === curr.contactNumber);
+        if (!existing || new Date(curr.lastMessageAt) > new Date(existing.lastMessageAt)) {
+          return [...acc.filter(c => c.contactNumber !== curr.contactNumber), curr];
+        }
+        return acc;
+      }, [])
+      .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+
+    res.json({ conversations: uniqueConversations });
+  } catch (error) {
+    logger.error('Get conversations error:', error);
+    res.status(500).json({ error: 'Failed to get conversations' });
   }
 });
 
