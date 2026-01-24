@@ -40,6 +40,7 @@ class GHLService {
 
   // Exchange authorization code for tokens
   async exchangeCodeForTokens(code) {
+    logger.info('exchangeCodeForTokens called', { code_received: !!code, code_length: code?.length });
     try {
       const params = new URLSearchParams({
         client_id: this.clientId,
@@ -68,7 +69,11 @@ class GHLService {
       logger.info('GHL token exchange success', { locationId: response.data?.locationId });
       return response.data;
     } catch (error) {
-      logger.error('GHL token exchange error:', error.response?.data || error.message);
+      logger.error('GHL token exchange error:', {
+        message: error.message,
+        response_data: error.response?.data,
+        response_status: error.response?.status
+      });
       throw new Error('Failed to exchange authorization code');
     }
   }
