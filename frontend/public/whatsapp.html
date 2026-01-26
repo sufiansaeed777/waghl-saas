@@ -384,13 +384,15 @@
           </button>
         `;
       } else if (hasQR) {
+        // Use image endpoint instead of data URI (works better in iframes)
+        const qrImageUrl = apiBase + '/api/embed/qr-image/' + token + '?t=' + Date.now();
         document.getElementById('content').innerHTML = `
           <span class="status-badge status-connecting">
             <span class="status-dot"></span>
             Waiting for scan
           </span>
           <div class="qr-container">
-            <img src="${status.qrCode}" alt="QR Code" class="qr-code" />
+            <img src="${qrImageUrl}" alt="QR Code" class="qr-code" />
             <p class="qr-instructions">
               Open WhatsApp on your phone<br>
               Go to <strong>Settings > Linked Devices > Link a Device</strong><br>

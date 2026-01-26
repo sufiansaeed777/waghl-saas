@@ -351,6 +351,38 @@ async function verifyTokenWithFallback(token) {
   return subAccountId;
 }
 
+// Serve QR code as actual image (bypasses CSP data: URI restrictions)
+router.get('/qr-image/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const subAccountId = await verifyTokenWithFallback(token);
+    if (!subAccountId) {
+      return res.status(401).send('Invalid token');
+    }
+
+    const status = await whatsappService.getStatus(subAccountId);
+
+    if (!status.qrCode) {
+      return res.status(404).send('No QR code available');
+    }
+
+    // Extract base64 data from data URI
+    const base64Data = status.qrCode.replace(/^data:image\/png;base64,/, '');
+    const imageBuffer = Buffer.from(base64Data, 'base64');
+
+    res.set({
+      'Content-Type': 'image/png',
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache'
+    });
+    res.send(imageBuffer);
+  } catch (error) {
+    logger.error('QR image error:', error);
+    res.status(500).send('Error generating QR');
+  }
+});
+
 // API endpoint to get status (for AJAX refresh)
 router.get('/status/:token', async (req, res) => {
   try {
