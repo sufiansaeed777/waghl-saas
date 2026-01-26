@@ -198,6 +198,37 @@
       locationId = extractFromReferrer();
     }
 
+    // PRIORITY: Try to read ghl_auth cookie (set during OAuth callback)
+    function getGhlAuthCookie() {
+      try {
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+          const [name, value] = cookie.trim().split('=');
+          if (name === 'ghl_auth' && value) {
+            const decoded = decodeURIComponent(value);
+            const [cookieLocationId, cookieToken] = decoded.split(':');
+            if (cookieLocationId && cookieToken) {
+              console.log('Found ghl_auth cookie for location:', cookieLocationId);
+              return { locationId: cookieLocationId, token: cookieToken };
+            }
+          }
+        }
+      } catch (e) {
+        console.log('Failed to read ghl_auth cookie:', e);
+      }
+      return null;
+    }
+
+    // If no token and no valid locationId, try cookie
+    if (!token && !locationId) {
+      const cookieAuth = getGhlAuthCookie();
+      if (cookieAuth) {
+        token = cookieAuth.token;
+        locationId = cookieAuth.locationId;
+        console.log('Using auth from cookie');
+      }
+    }
+
     // Try localStorage for saved token (from OAuth or setup page)
     let savedToken = null;
     let savedLocationId = null;

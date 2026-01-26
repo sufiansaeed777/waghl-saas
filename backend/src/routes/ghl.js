@@ -187,7 +187,20 @@ router.get('/callback', async (req, res) => {
 
     // Get the WhatsApp page URL
     const apiUrl = process.env.API_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const whatsappPageUrl = `${apiUrl}/whatsapp.html?token=${embedToken}&locationId=${tokenData.locationId || subAccount.ghlLocationId}&setup=true`;
+    const finalLocationId = locationId || subAccount.ghlLocationId;
+    const whatsappPageUrl = `${apiUrl}/whatsapp.html?token=${embedToken}&locationId=${finalLocationId}&setup=true`;
+
+    // Set a cookie to remember this location's token (works across iframe visits)
+    // Cookie stores: locationId:token pairs
+    const cookieValue = `${finalLocationId}:${embedToken}`;
+    res.cookie('ghl_auth', cookieValue, {
+      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      httpOnly: false, // Allow JavaScript to read it
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'None' // Required for cross-site iframe
+    });
+
+    logger.info('Set ghl_auth cookie for location:', finalLocationId);
 
     if (isFromGHL) {
       // Redirect to WhatsApp connection page for GHL marketplace installs
