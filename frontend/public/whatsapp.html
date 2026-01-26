@@ -176,8 +176,30 @@
       console.log('Using locationId from localStorage');
     }
 
-    // Handle error from redirect
+    // Handle error from redirect or setup mode
     let hasError = false;
+
+    // If this is setup mode (after OAuth), just show success and don't load QR
+    if (isSetup && token) {
+      hasError = true; // Prevent further initialization
+      document.getElementById('subAccountName').textContent = 'Installation Complete';
+      document.getElementById('content').innerHTML = `
+        <div style="background: #f0fdf4; border-radius: 12px; padding: 24px; margin-bottom: 24px;">
+          <svg style="width: 48px; height: 48px; fill: #22c55e; margin-bottom: 12px;" viewBox="0 0 24 24">
+            <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-1.25 17.292l-4.5-4.364 1.857-1.858 2.643 2.506 5.643-5.784 1.857 1.858-7.5 7.642z"/>
+          </svg>
+          <h2 style="color: #065f46; margin-bottom: 8px;">App Installed Successfully!</h2>
+          <p style="color: #047857; margin-bottom: 0;">Your GoHighLevel account is now connected.</p>
+        </div>
+        <div style="background: #eff6ff; border-radius: 12px; padding: 20px; text-align: left;">
+          <h3 style="color: #1e40af; margin-bottom: 12px;">Next Step</h3>
+          <p style="color: #3b82f6; font-size: 14px; line-height: 1.6; margin: 0;">
+            Go back to GoHighLevel and click the <strong>WhatsApp</strong> button in the left sidebar to connect your WhatsApp account.
+          </p>
+        </div>
+      `;
+    }
+
     if (errorParam) {
       hasError = true;
       const errorMessages = {
