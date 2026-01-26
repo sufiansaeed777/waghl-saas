@@ -92,6 +92,7 @@ router.get('/qr/:token', async (req, res) => {
     }
 
     if (!subAccountId) {
+      res.setHeader('Content-Type', 'text/html');
       return res.status(401).send(renderErrorPage('Invalid or expired token'));
     }
 
@@ -101,15 +102,18 @@ router.get('/qr/:token', async (req, res) => {
     });
 
     if (!subAccount) {
+      res.setHeader('Content-Type', 'text/html');
       return res.status(404).send(renderErrorPage('Sub-account not found'));
     }
 
     // Get WhatsApp status and QR code
     const status = await whatsappService.getStatus(subAccountId);
 
+    res.setHeader('Content-Type', 'text/html');
     res.send(renderQRPage(subAccount, status, token));
   } catch (error) {
     logger.error('Embed QR page error:', error);
+    res.setHeader('Content-Type', 'text/html');
     res.status(500).send(renderErrorPage('Something went wrong'));
   }
 });
