@@ -162,9 +162,11 @@
         '%7B%7Blocation.id%7D%7D',     // URL encoded double braces
         'location.id',
         '{{location_id}}',
-        '{location_id}'
+        '{location_id}',
+        '[[location.id]]',
+        '[[location_id]]'
       ];
-      return templatePatterns.some(p => id === p || id.includes('location.id') || id.includes('location_id}'));
+      return templatePatterns.some(p => id === p || id.includes('location.id') || id.includes('location_id}') || id.includes('[[') || id.includes(']]'));
     }
 
     // PRIORITY 1: Extract locationId from GHL referrer URL (most reliable in iframe)
