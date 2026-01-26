@@ -40,6 +40,36 @@ function setToken(subAccountId, token) {
   tokenCache.set(token, subAccountId);
 }
 
+// Get token by GHL location ID (for custom page integration)
+router.get('/token-by-location/:locationId', async (req, res) => {
+  try {
+    const { locationId } = req.params;
+
+    // Find sub-account by GHL location ID
+    const subAccount = await SubAccount.findOne({
+      where: { ghlLocationId: locationId }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Location not found. Please install the app first.' });
+    }
+
+    // Generate token
+    const token = generateToken(subAccount.id);
+    tokenCache.set(token, subAccount.id);
+
+    res.json({
+      success: true,
+      token,
+      subAccountId: subAccount.id,
+      subAccountName: subAccount.name
+    });
+  } catch (error) {
+    logger.error('Get token by location error:', error);
+    res.status(500).json({ error: 'Failed to get token' });
+  }
+});
+
 // Get embed URL for a sub-account (authenticated endpoint)
 router.get('/url/:subAccountId', async (req, res) => {
   try {

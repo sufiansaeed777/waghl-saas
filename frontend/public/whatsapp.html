@@ -136,20 +136,48 @@
   </div>
 
   <script>
-    // Get token from URL
+    // Get token or locationId from URL
     const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
+    let token = urlParams.get('token');
+    const locationId = urlParams.get('locationId');
     const apiBase = window.location.origin;
 
-    if (!token) {
-      document.getElementById('content').innerHTML = `
-        <div class="error-box">
-          <h1>Error</h1>
-          <p>Missing token parameter. Please use a valid embed URL.</p>
-        </div>
-      `;
-    } else {
-      loadStatus();
+    // Initialize the page
+    init();
+
+    async function init() {
+      // If locationId provided, fetch token first
+      if (!token && locationId) {
+        try {
+          const res = await fetch(apiBase + '/api/embed/token-by-location/' + locationId);
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Location not found');
+          }
+          const data = await res.json();
+          token = data.token;
+          if (data.subAccountName) {
+            document.getElementById('subAccountName').textContent = data.subAccountName;
+          }
+          loadStatus();
+        } catch (err) {
+          document.getElementById('content').innerHTML = `
+            <div class="error-box">
+              <h1>Error</h1>
+              <p>${err.message || 'Failed to load. Please install the app first.'}</p>
+            </div>
+          `;
+        }
+      } else if (token) {
+        loadStatus();
+      } else {
+        document.getElementById('content').innerHTML = `
+          <div class="error-box">
+            <h1>Error</h1>
+            <p>Missing token or locationId. Please use a valid embed URL.</p>
+          </div>
+        `;
+      }
     }
 
     async function loadStatus() {
