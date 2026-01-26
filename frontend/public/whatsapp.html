@@ -149,6 +149,9 @@
     // Debug: Log what we received
     console.log('URL Params:', { token: !!token, locationId, ssoKey: !!ssoKey, error: errorParam, hash: window.location.hash });
 
+    // Check if this is first-time setup after OAuth install
+    const isSetup = urlParams.get('setup') === 'true';
+
     // Check localStorage for saved token (set after OAuth)
     const savedToken = localStorage.getItem('waghl_token');
     const savedLocationId = localStorage.getItem('waghl_locationId');
