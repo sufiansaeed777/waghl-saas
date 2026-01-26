@@ -72,6 +72,15 @@ router.get('/url/:subAccountId', async (req, res) => {
 
 // QR Code embed page (public, token-authenticated)
 router.get('/qr/:token', async (req, res) => {
+  // Prevent caching - this page has dynamic QR codes
+  res.set({
+    'Content-Type': 'text/html; charset=utf-8',
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
+
   try {
     const { token } = req.params;
 
@@ -92,7 +101,6 @@ router.get('/qr/:token', async (req, res) => {
     }
 
     if (!subAccountId) {
-      res.setHeader('Content-Type', 'text/html');
       return res.status(401).send(renderErrorPage('Invalid or expired token'));
     }
 
@@ -102,18 +110,15 @@ router.get('/qr/:token', async (req, res) => {
     });
 
     if (!subAccount) {
-      res.setHeader('Content-Type', 'text/html');
       return res.status(404).send(renderErrorPage('Sub-account not found'));
     }
 
     // Get WhatsApp status and QR code
     const status = await whatsappService.getStatus(subAccountId);
 
-    res.setHeader('Content-Type', 'text/html');
     res.send(renderQRPage(subAccount, status, token));
   } catch (error) {
     logger.error('Embed QR page error:', error);
-    res.setHeader('Content-Type', 'text/html');
     res.status(500).send(renderErrorPage('Something went wrong'));
   }
 });
