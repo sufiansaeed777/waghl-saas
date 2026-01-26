@@ -157,9 +157,10 @@ router.post('/sso', async (req, res) => {
 
 // Alternative: GHL can also use a session key via query param
 // This endpoint validates a session and returns embed context
+// With redirect=true, it redirects to the whatsapp.html page with token
 router.get('/session', async (req, res) => {
   try {
-    const { locationId, companyId, userId } = req.query;
+    const { locationId, companyId, userId, redirect } = req.query;
 
     // If locationId is directly provided (from GHL Custom Menu Link)
     if (locationId && locationId !== '{location.id}' && locationId !== '{{location.id}}') {
@@ -168,11 +169,19 @@ router.get('/session', async (req, res) => {
       });
 
       if (!subAccount) {
+        if (redirect === 'true') {
+          return res.redirect('/whatsapp.html?error=location_not_found');
+        }
         return res.status(404).json({ error: 'Location not found. Please install the app first.' });
       }
 
       const token = generateToken(subAccount.id);
       tokenCache.set(token, subAccount.id);
+
+      // If redirect requested, go to whatsapp page with token
+      if (redirect === 'true') {
+        return res.redirect(`/whatsapp.html?token=${token}`);
+      }
 
       return res.json({
         success: true,
@@ -182,9 +191,15 @@ router.get('/session', async (req, res) => {
       });
     }
 
+    if (redirect === 'true') {
+      return res.redirect('/whatsapp.html?error=missing_location');
+    }
     return res.status(400).json({ error: 'Location ID required' });
   } catch (error) {
     logger.error('Session validation error:', error);
+    if (req.query.redirect === 'true') {
+      return res.redirect('/whatsapp.html?error=server_error');
+    }
     res.status(500).json({ error: 'Session validation failed' });
   }
 });

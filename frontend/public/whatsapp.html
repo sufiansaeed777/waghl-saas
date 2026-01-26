@@ -143,10 +143,34 @@
     let locationId = urlParams.get('locationId') || hashParams.get('locationId') ||
                      urlParams.get('location_id') || hashParams.get('location_id');
     let ssoKey = urlParams.get('ssoKey') || hashParams.get('ssoKey');
+    let errorParam = urlParams.get('error');
     const apiBase = window.location.origin;
 
     // Debug: Log what we received
-    console.log('URL Params:', { token: !!token, locationId, ssoKey: !!ssoKey, hash: window.location.hash });
+    console.log('URL Params:', { token: !!token, locationId, ssoKey: !!ssoKey, error: errorParam, hash: window.location.hash });
+
+    // Handle error from redirect
+    let hasError = false;
+    if (errorParam) {
+      hasError = true;
+      const errorMessages = {
+        'location_not_found': 'Location not found. Please install the app from the GHL Marketplace first.',
+        'missing_location': 'Could not identify your GHL location.',
+        'server_error': 'Server error. Please try again later.'
+      };
+      document.getElementById('content').innerHTML = `
+        <div class="error-box">
+          <h1>Setup Required</h1>
+          <p>${errorMessages[errorParam] || 'An error occurred.'}</p>
+          <div class="info-box" style="margin-top: 16px;">
+            <p><strong>To fix this:</strong><br>
+            1. Install the app from the GHL Marketplace<br>
+            2. Complete the OAuth authorization<br>
+            3. Try again</p>
+          </div>
+        </div>
+      `;
+    }
 
     // Clean up template variables that weren't replaced
     if (locationId === '{location.id}' || locationId === '{{location.id}}' || locationId === '%7Blocation.id%7D') {
@@ -311,8 +335,10 @@
       `;
     }
 
-    // Start initialization
-    init();
+    // Start initialization (unless we have an error)
+    if (!hasError) {
+      init();
+    }
 
     async function loadStatus() {
       try {
