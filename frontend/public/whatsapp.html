@@ -476,17 +476,23 @@
 
     async function pollStatus() {
       try {
+        console.log('Polling status...');
         const res = await fetch(apiBase + '/api/embed/status/' + token);
         const data = await res.json();
+        console.log('Status response:', data.status, 'hasQR:', data.hasQR, 'qrCode length:', data.qrCode ? data.qrCode.length : 0);
 
         if (data.status === 'connected') {
+          console.log('Connected! Reloading...');
           location.reload();
         } else if (data.hasQR && data.qrCode) {
+          console.log('Got QR code, rendering...');
           renderStatus(data);
         } else {
+          console.log('No QR yet, polling again in 2s...');
           setTimeout(pollStatus, 2000);
         }
       } catch (err) {
+        console.error('Poll error:', err);
         setTimeout(pollStatus, 3000);
       }
     }
