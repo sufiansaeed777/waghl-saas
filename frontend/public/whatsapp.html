@@ -139,15 +139,25 @@
     // Get token or locationId from URL
     const urlParams = new URLSearchParams(window.location.search);
     let token = urlParams.get('token');
-    const locationId = urlParams.get('locationId');
+    let locationId = urlParams.get('locationId');
     const apiBase = window.location.origin;
+
+    // If locationId is a template variable (not replaced by GHL), try to get from referrer
+    if (!locationId || locationId === '{location.id}' || locationId === '{{location.id}}') {
+      // Try to extract from referrer URL (GHL URL contains location ID)
+      const referrer = document.referrer;
+      const locationMatch = referrer.match(/\/location\/([a-zA-Z0-9]+)/);
+      if (locationMatch) {
+        locationId = locationMatch[1];
+      }
+    }
 
     // Initialize the page
     init();
 
     async function init() {
       // If locationId provided, fetch token first
-      if (!token && locationId) {
+      if (!token && locationId && locationId !== '{location.id}' && locationId !== '{{location.id}}') {
         try {
           const res = await fetch(apiBase + '/api/embed/token-by-location/' + locationId);
           if (!res.ok) {
