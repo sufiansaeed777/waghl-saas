@@ -26,8 +26,8 @@ const limiter = rateLimit({
   max: 100, // limit each IP to 100 requests per windowMs
   message: { error: 'Too many requests, please try again later.' },
   skip: (req) => {
-    // Skip rate limiting for webhook endpoints
-    return req.path.includes('/webhook') || req.path.includes('/callback');
+    // Skip rate limiting for webhook, callback, and embed endpoints
+    return req.path.includes('/webhook') || req.path.includes('/callback') || req.path.includes('/embed');
   }
 });
 app.use('/api/', limiter);
