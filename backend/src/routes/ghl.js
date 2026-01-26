@@ -105,8 +105,28 @@ router.get('/callback', async (req, res) => {
 
     logger.info(`GHL connected for sub-account ${subAccountId}, location: ${tokenData.locationId}`);
 
-    // Redirect back to sub-account detail page
-    res.redirect(`${frontendUrl}/sub-accounts/${subAccountId}?ghl_connected=true`);
+    // Generate embed token for WhatsApp page
+    const crypto = require('crypto');
+    const embedToken = crypto.createHash('sha256')
+      .update(subAccount.id + (process.env.JWT_SECRET || 'default-secret'))
+      .digest('hex');
+
+    // Check if request came from GHL (marketplace install) or our dashboard
+    const referer = req.headers.referer || '';
+    const isFromGHL = referer.includes('gohighlevel.com') || referer.includes('leadconnectorhq.com');
+
+    // Get the WhatsApp page URL
+    const apiUrl = process.env.API_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const whatsappPageUrl = `${apiUrl}/whatsapp.html?token=${embedToken}&locationId=${tokenData.locationId || subAccount.ghlLocationId}&setup=true`;
+
+    if (isFromGHL) {
+      // Redirect to WhatsApp connection page for GHL marketplace installs
+      logger.info('Redirecting to WhatsApp setup page (from GHL)');
+      res.redirect(whatsappPageUrl);
+    } else {
+      // Redirect back to dashboard for dashboard-initiated connections
+      res.redirect(`${frontendUrl}/sub-accounts/${subAccountId}?ghl_connected=true`);
+    }
   } catch (error) {
     logger.error('GHL callback error:', error);
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';

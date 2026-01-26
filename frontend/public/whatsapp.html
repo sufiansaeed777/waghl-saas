@@ -149,6 +149,30 @@
     // Debug: Log what we received
     console.log('URL Params:', { token: !!token, locationId, ssoKey: !!ssoKey, error: errorParam, hash: window.location.hash });
 
+    // Check localStorage for saved token (set after OAuth)
+    const savedToken = localStorage.getItem('waghl_token');
+    const savedLocationId = localStorage.getItem('waghl_locationId');
+
+    // If we have a token in URL, save it to localStorage for future Custom Page visits
+    if (token) {
+      localStorage.setItem('waghl_token', token);
+      console.log('Saved token to localStorage');
+    }
+    if (locationId) {
+      localStorage.setItem('waghl_locationId', locationId);
+      console.log('Saved locationId to localStorage');
+    }
+
+    // If no token/locationId in URL, try localStorage
+    if (!token && savedToken) {
+      token = savedToken;
+      console.log('Using token from localStorage');
+    }
+    if (!locationId && savedLocationId) {
+      locationId = savedLocationId;
+      console.log('Using locationId from localStorage');
+    }
+
     // Handle error from redirect
     let hasError = false;
     if (errorParam) {
