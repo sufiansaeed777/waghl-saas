@@ -51,59 +51,129 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${frontendUrl}/sub-accounts?ghl_error=no_code`);
     }
 
-    // Decode state to get customer and sub-account IDs (URL-safe base64)
-    let customerId, subAccountId;
-
     logger.info('GHL callback received', { code: code ? 'present' : 'missing', state: state || 'missing', stateIsArray: Array.isArray(req.query.state) });
 
-    if (!state) {
-      logger.error('No state parameter received');
-      return res.redirect(`${frontendUrl}/sub-accounts?ghl_error=invalid_state`);
-    }
-
-    try {
-      // Convert URL-safe base64 back to standard base64
-      let base64State = state
-        .replace(/-/g, '+')
-        .replace(/_/g, '/');
-      // Add padding if needed
-      while (base64State.length % 4) {
-        base64State += '=';
-      }
-      logger.info('Decoding state', { original: state, converted: base64State });
-      const decoded = Buffer.from(base64State, 'base64').toString();
-      logger.info('Decoded state string', { decoded });
-      const stateData = JSON.parse(decoded);
-      customerId = stateData.customerId;
-      subAccountId = stateData.subAccountId;
-      logger.info('State parsed successfully', { customerId, subAccountId });
-    } catch (e) {
-      logger.error('Failed to decode state', { error: e.message, state: state });
-      return res.redirect(`${frontendUrl}/sub-accounts?ghl_error=invalid_state`);
-    }
-
-    // Exchange code for tokens
+    // Exchange code for tokens FIRST - we need locationId from this
     const tokenData = await ghlService.exchangeCodeForTokens(code);
+    const locationId = tokenData.locationId;
 
-    // Get sub-account
-    const subAccount = await SubAccount.findOne({
-      where: { id: subAccountId, customerId }
-    });
+    logger.info('GHL token exchange successful', { locationId, hasAccessToken: !!tokenData.access_token });
+
+    // Decode state to get customer and sub-account IDs (URL-safe base64)
+    let customerId, subAccountId;
+    let stateValid = false;
+
+    if (state) {
+      try {
+        // Convert URL-safe base64 back to standard base64
+        let base64State = state
+          .replace(/-/g, '+')
+          .replace(/_/g, '/');
+        // Add padding if needed
+        while (base64State.length % 4) {
+          base64State += '=';
+        }
+        logger.info('Decoding state', { original: state, converted: base64State });
+        const decoded = Buffer.from(base64State, 'base64').toString();
+        logger.info('Decoded state string', { decoded });
+        const stateData = JSON.parse(decoded);
+        customerId = stateData.customerId;
+        subAccountId = stateData.subAccountId;
+        stateValid = true;
+        logger.info('State parsed successfully', { customerId, subAccountId });
+      } catch (e) {
+        logger.warn('Failed to decode state, will try locationId lookup', { error: e.message, state: state });
+      }
+    }
+
+    let subAccount = null;
+
+    // Strategy 1: Try to find SubAccount by state (dashboard-initiated OAuth)
+    if (stateValid && subAccountId) {
+      subAccount = await SubAccount.findOne({
+        where: { id: subAccountId, customerId }
+      });
+      if (subAccount) {
+        logger.info('Found SubAccount by state', { subAccountId });
+      }
+    }
+
+    // Strategy 2: Try to find SubAccount by locationId (returning user or already linked)
+    if (!subAccount && locationId) {
+      subAccount = await SubAccount.findOne({
+        where: { ghlLocationId: locationId }
+      });
+      if (subAccount) {
+        logger.info('Found SubAccount by locationId', { locationId, subAccountId: subAccount.id });
+      }
+    }
+
+    // Strategy 3: Auto-create for GHL Marketplace installs (no existing SubAccount)
+    if (!subAccount && locationId) {
+      logger.info('No SubAccount found, auto-creating for marketplace install', { locationId });
+
+      // Find or create a customer for this GHL location
+      // Use a default/admin customer or create one based on locationId
+      let customer = null;
+
+      // First, try to find admin customer
+      customer = await Customer.findOne({ where: { role: 'admin' } });
+
+      if (!customer) {
+        // Create a marketplace customer if no admin exists
+        const crypto = require('crypto');
+        customer = await Customer.create({
+          email: `ghl-${locationId}@marketplace.local`,
+          password: crypto.randomBytes(32).toString('hex'), // Random password (won't be used)
+          name: 'GHL Marketplace User',
+          company: 'GHL Location ' + locationId,
+          apiKey: crypto.randomBytes(32).toString('hex'),
+          role: 'customer',
+          subscriptionStatus: 'active', // Give them access
+          planType: 'standard',
+          isActive: true
+        });
+        logger.info('Created marketplace customer', { customerId: customer.id });
+      }
+
+      // Create SubAccount for this location
+      const crypto = require('crypto');
+      subAccount = await SubAccount.create({
+        customerId: customer.id,
+        name: `GHL Location ${locationId.substring(0, 8)}`,
+        apiKey: crypto.randomBytes(32).toString('hex'),
+        status: 'disconnected',
+        isActive: true,
+        isPaid: true, // Allow them to connect WhatsApp
+        ghlLocationId: locationId,
+        ghlConnected: true,
+        ghlAccessToken: tokenData.access_token,
+        ghlRefreshToken: tokenData.refresh_token,
+        ghlTokenExpiresAt: new Date(Date.now() + (tokenData.expires_in * 1000))
+      });
+
+      logger.info('Created SubAccount for marketplace install', {
+        subAccountId: subAccount.id,
+        customerId: customer.id,
+        locationId
+      });
+    }
 
     if (!subAccount) {
+      logger.error('Could not find or create SubAccount', { locationId, stateValid });
       return res.redirect(`${frontendUrl}/sub-accounts?ghl_error=subaccount_not_found`);
     }
 
-    // Update sub-account with GHL tokens
+    // Update sub-account with GHL tokens (in case it already existed)
     await subAccount.update({
       ghlAccessToken: tokenData.access_token,
       ghlRefreshToken: tokenData.refresh_token,
       ghlTokenExpiresAt: new Date(Date.now() + (tokenData.expires_in * 1000)),
-      ghlLocationId: tokenData.locationId || subAccount.ghlLocationId,
+      ghlLocationId: locationId || subAccount.ghlLocationId,
       ghlConnected: true
     });
 
-    logger.info(`GHL connected for sub-account ${subAccountId}, location: ${tokenData.locationId}`);
+    logger.info(`GHL connected for sub-account ${subAccount.id}, location: ${locationId}`);
 
     // Generate embed token for WhatsApp page
     const crypto = require('crypto');
@@ -125,7 +195,7 @@ router.get('/callback', async (req, res) => {
       res.redirect(whatsappPageUrl);
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
-      res.redirect(`${frontendUrl}/sub-accounts/${subAccountId}?ghl_connected=true`);
+      res.redirect(`${frontendUrl}/sub-accounts/${subAccount.id}?ghl_connected=true`);
     }
   } catch (error) {
     logger.error('GHL callback error:', error);

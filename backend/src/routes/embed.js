@@ -46,12 +46,50 @@ router.get('/token-by-location/:locationId', async (req, res) => {
     const { locationId } = req.params;
 
     // Find sub-account by GHL location ID
-    const subAccount = await SubAccount.findOne({
+    let subAccount = await SubAccount.findOne({
       where: { ghlLocationId: locationId }
     });
 
+    // Auto-create SubAccount for existing GHL installs that don't have one yet
     if (!subAccount) {
-      return res.status(404).json({ error: 'Location not found. Please install the app first.' });
+      logger.info('No SubAccount found for locationId, auto-creating', { locationId });
+
+      // Find or create a customer for this GHL location
+      let customer = await Customer.findOne({ where: { role: 'admin' } });
+
+      if (!customer) {
+        // Create a marketplace customer if no admin exists
+        customer = await Customer.create({
+          email: `ghl-${locationId}@marketplace.local`,
+          password: crypto.randomBytes(32).toString('hex'),
+          name: 'GHL Marketplace User',
+          company: 'GHL Location ' + locationId,
+          apiKey: crypto.randomBytes(32).toString('hex'),
+          role: 'customer',
+          subscriptionStatus: 'active',
+          planType: 'standard',
+          isActive: true
+        });
+        logger.info('Created marketplace customer', { customerId: customer.id });
+      }
+
+      // Create SubAccount for this location
+      subAccount = await SubAccount.create({
+        customerId: customer.id,
+        name: `GHL Location ${locationId.substring(0, 8)}`,
+        apiKey: crypto.randomBytes(32).toString('hex'),
+        status: 'disconnected',
+        isActive: true,
+        isPaid: true,
+        ghlLocationId: locationId,
+        ghlConnected: true
+      });
+
+      logger.info('Auto-created SubAccount for existing GHL install', {
+        subAccountId: subAccount.id,
+        customerId: customer.id,
+        locationId
+      });
     }
 
     // Generate token

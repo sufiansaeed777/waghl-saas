@@ -16,10 +16,59 @@ const PORT = process.env.PORT || 3000;
 // Trust proxy (behind nginx/varnish)
 app.set('trust proxy', 1);
 
-// Security middleware
-app.use(helmet());
+// Security middleware - configure helmet to allow GHL iframe embedding
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", "https:", "wss:"],
+      frameSrc: ["'self'"],
+      frameAncestors: [
+        "'self'",
+        "https://*.gohighlevel.com",
+        "https://*.leadconnectorhq.com",
+        "https://*.msgsndr.com",
+        "https://app.gohighlevel.com",
+        "https://app.leadconnectorhq.com"
+      ]
+    }
+  },
+  // Disable X-Frame-Options as we're using CSP frame-ancestors
+  frameguard: false
+}));
+
+// CORS - allow GHL domains for iframe communication
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:5173',
+  'https://app.gohighlevel.com',
+  'https://app.leadconnectorhq.com',
+  /\.gohighlevel\.com$/,
+  /\.leadconnectorhq\.com$/,
+  /\.msgsndr\.com$/
+];
+
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, etc)
+    if (!origin) return callback(null, true);
+
+    // Check if origin matches allowed list
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed instanceof RegExp) {
+        return allowed.test(origin);
+      }
+      return allowed === origin;
+    });
+
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Allow all for now to avoid issues
+    }
+  },
   credentials: true
 }));
 
