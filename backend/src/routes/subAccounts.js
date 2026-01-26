@@ -161,7 +161,7 @@ router.get('/:id/embed-url', authenticateJWT, async (req, res) => {
 
     // Build embed URL
     const backendUrl = process.env.API_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const embedUrl = `${backendUrl}/embed/qr/${token}`;
+    const embedUrl = `${backendUrl}/api/embed/qr/${token}.html`;
 
     // Store token mapping (update embed service)
     const embedService = require('./embed');

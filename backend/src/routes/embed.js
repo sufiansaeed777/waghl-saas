@@ -56,7 +56,7 @@ router.get('/url/:subAccountId', async (req, res) => {
 
     // Build embed URL
     const backendUrl = process.env.API_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const embedUrl = `${backendUrl}/embed/qr/${token}`;
+    const embedUrl = `${backendUrl}/api/embed/qr/${token}.html`;
 
     res.json({
       success: true,
@@ -71,7 +71,8 @@ router.get('/url/:subAccountId', async (req, res) => {
 });
 
 // QR Code embed page (public, token-authenticated)
-router.get('/qr/:token', async (req, res) => {
+// Using .html extension to prevent nginx from overriding Content-Type
+router.get('/qr/:token.html', async (req, res) => {
   // Prevent caching - this page has dynamic QR codes
   res.set({
     'Content-Type': 'text/html; charset=utf-8',
@@ -426,7 +427,7 @@ function renderQRPage(subAccount, status, token) {
       btn.innerHTML = '<div class="spinner"></div> Connecting...';
 
       try {
-        const res = await fetch(apiBase + '/embed/connect/' + token, { method: 'POST' });
+        const res = await fetch(apiBase + '/api/embed/connect/' + token, { method: 'POST' });
         const data = await res.json();
 
         if (res.ok) {
@@ -448,7 +449,7 @@ function renderQRPage(subAccount, status, token) {
       if (!confirm('Are you sure you want to disconnect WhatsApp?')) return;
 
       try {
-        const res = await fetch(apiBase + '/embed/disconnect/' + token, { method: 'POST' });
+        const res = await fetch(apiBase + '/api/embed/disconnect/' + token, { method: 'POST' });
         if (res.ok) {
           location.reload();
         } else {
@@ -461,7 +462,7 @@ function renderQRPage(subAccount, status, token) {
 
     async function pollStatus() {
       try {
-        const res = await fetch(apiBase + '/embed/status/' + token);
+        const res = await fetch(apiBase + '/api/embed/status/' + token);
         const data = await res.json();
 
         if (data.status === 'connected') {
