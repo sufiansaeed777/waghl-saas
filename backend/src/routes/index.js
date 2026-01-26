@@ -9,9 +9,11 @@ const webhookRoutes = require('./webhooks');
 const adminRoutes = require('./admin');
 const billingRoutes = require('./billing');
 const ghlRoutes = require('./ghl');
+const embedRoutes = require('./embed');
 
 // Public routes
 router.use('/auth', authRoutes);
+router.use('/embed', embedRoutes); // Public embed pages for GHL iframe
 
 // Protected routes (require authentication)
 router.use('/customers', customerRoutes);

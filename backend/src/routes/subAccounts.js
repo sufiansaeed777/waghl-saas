@@ -142,4 +142,44 @@ router.post('/:id/refresh-api-key', authenticateJWT, async (req, res) => {
   }
 });
 
+// Get embed URL for GHL iframe (QR code page)
+router.get('/:id/embed-url', authenticateJWT, async (req, res) => {
+  try {
+    const subAccount = await SubAccount.findOne({
+      where: { id: req.params.id, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // Generate embed token
+    const crypto = require('crypto');
+    const token = crypto.createHash('sha256')
+      .update(subAccount.id + process.env.JWT_SECRET)
+      .digest('hex');
+
+    // Build embed URL
+    const backendUrl = process.env.API_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const embedUrl = `${backendUrl}/api/embed/qr/${token}`;
+
+    // Store token mapping (update embed service)
+    const embedService = require('./embed');
+    if (embedService.setToken) {
+      embedService.setToken(subAccount.id, token);
+    }
+
+    res.json({
+      success: true,
+      embedUrl,
+      subAccountId: subAccount.id,
+      subAccountName: subAccount.name,
+      instructions: 'Use this URL as an iframe src or custom button link in GHL'
+    });
+  } catch (error) {
+    logger.error('Get embed URL error:', error);
+    res.status(500).json({ error: 'Failed to generate embed URL' });
+  }
+});
+
 module.exports = router;
