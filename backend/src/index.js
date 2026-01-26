@@ -7,6 +7,7 @@ const path = require('path');
 const { sequelize } = require('./models');
 const logger = require('./utils/logger');
 const routes = require('./routes');
+const embedRoutes = require('./routes/embed');
 const { initializeRedis } = require('./config/redis');
 const whatsappService = require('./services/whatsapp');
 
@@ -43,6 +44,9 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Embed routes (outside /api to avoid nginx content-type override)
+app.use('/embed', embedRoutes);
 
 // API Routes
 app.use('/api', routes);
