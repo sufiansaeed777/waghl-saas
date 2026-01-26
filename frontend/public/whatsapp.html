@@ -142,15 +142,41 @@
     let locationId = urlParams.get('locationId');
     const apiBase = window.location.origin;
 
-    // If locationId is a template variable (not replaced by GHL), try to get from referrer
+    // If locationId is a template variable (not replaced by GHL), try multiple methods
     if (!locationId || locationId === '{location.id}' || locationId === '{{location.id}}') {
-      // Try to extract from referrer URL (GHL URL contains location ID)
+      // Method 1: Try to extract from referrer URL
       const referrer = document.referrer;
       const locationMatch = referrer.match(/\/location\/([a-zA-Z0-9]+)/);
       if (locationMatch) {
         locationId = locationMatch[1];
       }
+
+      // Method 2: Try to get from parent URL (if same origin or allowed)
+      if (!locationId || locationId === '{location.id}') {
+        try {
+          const parentUrl = window.parent.location.href;
+          const parentMatch = parentUrl.match(/\/location\/([a-zA-Z0-9]+)/);
+          if (parentMatch) {
+            locationId = parentMatch[1];
+          }
+        } catch (e) {
+          // Cross-origin - can't access parent
+          console.log('Cannot access parent location');
+        }
+      }
     }
+
+    // Listen for postMessage from GHL (they might send location data)
+    window.addEventListener('message', function(event) {
+      // Accept messages from GHL domains
+      if (event.origin.includes('gohighlevel.com') || event.origin.includes('leadconnectorhq.com')) {
+        console.log('Received message from GHL:', event.data);
+        if (event.data && event.data.locationId) {
+          locationId = event.data.locationId;
+          init();
+        }
+      }
+    });
 
     // Initialize the page
     init();
