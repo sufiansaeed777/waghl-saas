@@ -155,6 +155,41 @@ router.post('/sso', async (req, res) => {
   }
 });
 
+// Redirect endpoint - always redirects to whatsapp.html (for GHL Custom Pages)
+// Use this when query params aren't being passed correctly through proxy
+router.get('/go/:locationId', async (req, res) => {
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
+
+  try {
+    const { locationId } = req.params;
+
+    if (!locationId || locationId === '{location.id}' || locationId === '{{location.id}}') {
+      return res.redirect('/whatsapp.html?error=missing_location');
+    }
+
+    const subAccount = await SubAccount.findOne({
+      where: { ghlLocationId: locationId }
+    });
+
+    if (!subAccount) {
+      return res.redirect('/whatsapp.html?error=location_not_found');
+    }
+
+    const token = generateToken(subAccount.id);
+    tokenCache.set(token, subAccount.id);
+
+    return res.redirect(`/whatsapp.html?token=${token}`);
+  } catch (error) {
+    logger.error('Go redirect error:', error);
+    return res.redirect('/whatsapp.html?error=server_error');
+  }
+});
+
 // Alternative: GHL can also use a session key via query param
 // This endpoint validates a session and returns embed context
 // With redirect=true, it redirects to the whatsapp.html page with token
