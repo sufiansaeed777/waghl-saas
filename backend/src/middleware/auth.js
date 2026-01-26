@@ -79,6 +79,63 @@ const requireAdmin = (req, res, next) => {
   next();
 };
 
+// Require active subscription middleware
+const requireActiveSubscription = (req, res, next) => {
+  const validStatuses = ['active', 'trialing'];
+
+  // Admin bypass
+  if (req.customer.role === 'admin') {
+    return next();
+  }
+
+  if (!validStatuses.includes(req.customer.subscriptionStatus)) {
+    return res.status(402).json({
+      error: 'Active subscription required',
+      message: 'Please subscribe to use this feature',
+      subscriptionStatus: req.customer.subscriptionStatus
+    });
+  }
+  next();
+};
+
+// Require paid sub-account middleware (checks specific sub-account)
+const requirePaidSubAccount = async (req, res, next) => {
+  try {
+    const subAccountId = req.params.subAccountId || req.body.subAccountId;
+
+    if (!subAccountId) {
+      return res.status(400).json({ error: 'Sub-account ID required' });
+    }
+
+    // Admin bypass
+    if (req.customer.role === 'admin') {
+      return next();
+    }
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    if (!subAccount.isPaid) {
+      return res.status(402).json({
+        error: 'Payment required',
+        message: 'This sub-account requires an active subscription',
+        subAccountId
+      });
+    }
+
+    req.subAccount = subAccount;
+    next();
+  } catch (error) {
+    logger.error('Require paid sub-account error:', error);
+    return res.status(500).json({ error: 'Authorization check failed' });
+  }
+};
+
 // Generate JWT token
 const generateToken = (customer) => {
   return jwt.sign(
@@ -92,5 +149,7 @@ module.exports = {
   authenticateJWT,
   authenticateApiKey,
   requireAdmin,
+  requireActiveSubscription,
+  requirePaidSubAccount,
   generateToken
 };

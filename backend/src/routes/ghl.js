@@ -4,7 +4,12 @@ const { authenticateJWT } = require('../middleware/auth');
 const { Customer, SubAccount } = require('../models');
 const ghlService = require('../services/ghl');
 const whatsappService = require('../services/whatsapp');
+const messageQueue = require('../services/messageQueue');
 const logger = require('../utils/logger');
+
+// Enable drip mode for GHL webhooks (rate limiting)
+const DRIP_MODE_ENABLED = process.env.DRIP_MODE_ENABLED !== 'false'; // Default: true
+const DRIP_DELAY_MS = parseInt(process.env.DRIP_DELAY_MS) || 1000; // Default: 1 second between messages
 
 // Get GHL authorization URL for a sub-account
 router.get('/auth-url/:subAccountId', authenticateJWT, async (req, res) => {
@@ -201,6 +206,12 @@ router.post('/webhook', async (req, res) => {
         return res.status(200).json({ success: true });
       }
 
+      // Check payment status
+      if (!subAccount.isPaid) {
+        logger.warn(`Sub-account ${subAccount.id} is not paid, ignoring GHL webhook`);
+        return res.status(200).json({ success: true, message: 'Payment required' });
+      }
+
       // Check if WhatsApp is connected
       const waStatus = await whatsappService.getStatus(subAccount.id);
       if (waStatus.status !== 'connected') {
@@ -208,32 +219,62 @@ router.post('/webhook', async (req, res) => {
         return res.status(200).json({ success: true });
       }
 
-      // Send message via WhatsApp
+      // Send message via WhatsApp (using queue for rate limiting / drip mode)
       try {
-        // Handle media attachments
-        if (attachments && attachments.length > 0) {
-          for (const attachment of attachments) {
+        if (DRIP_MODE_ENABLED) {
+          // Use message queue for rate-limited sending (drip mode)
+          messageQueue.setRateLimit(subAccount.id, { delayBetweenMessages: DRIP_DELAY_MS });
+
+          // Handle media attachments
+          if (attachments && attachments.length > 0) {
+            for (const attachment of attachments) {
+              await messageQueue.queueMessage(
+                subAccount.id,
+                phoneNumber,
+                attachment.url || messageContent,
+                attachment.type || 'document',
+                attachment.url,
+                { source: 'ghl_webhook', contactId }
+              );
+            }
+          } else if (messageContent) {
+            // Queue text message
+            await messageQueue.queueMessage(
+              subAccount.id,
+              phoneNumber,
+              messageContent,
+              'text',
+              null,
+              { source: 'ghl_webhook', contactId }
+            );
+          }
+
+          logger.info(`Queued WhatsApp message to ${phoneNumber} via GHL webhook (drip mode)`);
+        } else {
+          // Direct sending (no queue)
+          if (attachments && attachments.length > 0) {
+            for (const attachment of attachments) {
+              await whatsappService.sendMessage(
+                subAccount.id,
+                phoneNumber,
+                attachment.url || messageContent,
+                attachment.type || 'document',
+                attachment.url
+              );
+            }
+          } else if (messageContent) {
             await whatsappService.sendMessage(
               subAccount.id,
               phoneNumber,
-              attachment.url || messageContent,
-              attachment.type || 'document',
-              attachment.url
+              messageContent,
+              'text'
             );
           }
-        } else if (messageContent) {
-          // Send text message
-          await whatsappService.sendMessage(
-            subAccount.id,
-            phoneNumber,
-            messageContent,
-            'text'
-          );
-        }
 
-        logger.info(`Sent WhatsApp message to ${phoneNumber} via GHL webhook`);
+          logger.info(`Sent WhatsApp message to ${phoneNumber} via GHL webhook`);
+        }
       } catch (sendError) {
-        logger.error('Failed to send WhatsApp message from GHL webhook:', sendError);
+        logger.error('Failed to send/queue WhatsApp message from GHL webhook:', sendError);
       }
     }
 
@@ -249,6 +290,133 @@ router.post('/webhook', async (req, res) => {
 router.get('/webhook', (req, res) => {
   // Return 200 for webhook verification
   res.status(200).send('OK');
+});
+
+// ============================================
+// Message Queue / Drip Mode API Endpoints
+// ============================================
+
+// Get queue status for a sub-account
+router.get('/queue/status/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    const { subAccountId } = req.params;
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    const status = messageQueue.getQueueStatus(subAccountId);
+    res.json({
+      success: true,
+      dripModeEnabled: DRIP_MODE_ENABLED,
+      delayMs: DRIP_DELAY_MS,
+      ...status
+    });
+  } catch (error) {
+    logger.error('Queue status error:', error);
+    res.status(500).json({ error: 'Failed to get queue status' });
+  }
+});
+
+// Set rate limit for a sub-account
+router.post('/queue/rate-limit/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    const { subAccountId } = req.params;
+    const { delayBetweenMessages, messagesPerSecond } = req.body;
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    const config = {};
+    if (delayBetweenMessages) config.delayBetweenMessages = parseInt(delayBetweenMessages);
+    if (messagesPerSecond) config.messagesPerSecond = parseFloat(messagesPerSecond);
+
+    messageQueue.setRateLimit(subAccountId, config);
+
+    res.json({
+      success: true,
+      message: 'Rate limit updated',
+      rateLimit: messageQueue.getQueueStatus(subAccountId).rateLimit
+    });
+  } catch (error) {
+    logger.error('Set rate limit error:', error);
+    res.status(500).json({ error: 'Failed to set rate limit' });
+  }
+});
+
+// Clear queue for a sub-account
+router.post('/queue/clear/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    const { subAccountId } = req.params;
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    const cleared = messageQueue.clearQueue(subAccountId);
+    res.json({
+      success: true,
+      message: `Cleared ${cleared} messages from queue`
+    });
+  } catch (error) {
+    logger.error('Clear queue error:', error);
+    res.status(500).json({ error: 'Failed to clear queue' });
+  }
+});
+
+// Pause queue processing
+router.post('/queue/pause/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    const { subAccountId } = req.params;
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    messageQueue.pauseProcessing(subAccountId);
+    res.json({ success: true, message: 'Queue paused' });
+  } catch (error) {
+    logger.error('Pause queue error:', error);
+    res.status(500).json({ error: 'Failed to pause queue' });
+  }
+});
+
+// Resume queue processing
+router.post('/queue/resume/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    const { subAccountId } = req.params;
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    messageQueue.resumeProcessing(subAccountId);
+    res.json({ success: true, message: 'Queue resumed' });
+  } catch (error) {
+    logger.error('Resume queue error:', error);
+    res.status(500).json({ error: 'Failed to resume queue' });
+  }
 });
 
 module.exports = router;

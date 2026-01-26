@@ -5,7 +5,7 @@ const path = require('path');
 const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { SubAccount, Message } = require('../models');
-const { authenticateJWT, authenticateApiKey } = require('../middleware/auth');
+const { authenticateJWT, authenticateApiKey, requirePaidSubAccount } = require('../middleware/auth');
 const whatsappService = require('../services/whatsapp');
 const logger = require('../utils/logger');
 
@@ -78,10 +78,11 @@ router.post('/upload', authenticateJWT, upload.single('file'), async (req, res) 
   }
 });
 
-// Connect WhatsApp (get QR code)
-router.post('/:subAccountId/connect', authenticateJWT, async (req, res) => {
+// Connect WhatsApp (get QR code) - REQUIRES PAYMENT
+router.post('/:subAccountId/connect', authenticateJWT, requirePaidSubAccount, async (req, res) => {
   try {
-    const subAccount = await SubAccount.findOne({
+    // subAccount is already attached by requirePaidSubAccount middleware
+    const subAccount = req.subAccount || await SubAccount.findOne({
       where: { id: req.params.subAccountId, customerId: req.customer.id }
     });
 
@@ -162,10 +163,11 @@ router.post('/:subAccountId/disconnect', authenticateJWT, async (req, res) => {
   }
 });
 
-// Send message (JWT auth)
-router.post('/:subAccountId/send', authenticateJWT, async (req, res) => {
+// Send message (JWT auth) - REQUIRES PAYMENT
+router.post('/:subAccountId/send', authenticateJWT, requirePaidSubAccount, async (req, res) => {
   try {
-    const subAccount = await SubAccount.findOne({
+    // subAccount is already attached by requirePaidSubAccount middleware
+    const subAccount = req.subAccount || await SubAccount.findOne({
       where: { id: req.params.subAccountId, customerId: req.customer.id }
     });
 
@@ -187,13 +189,13 @@ router.post('/:subAccountId/send', authenticateJWT, async (req, res) => {
   }
 });
 
-// Send message (API key auth - for external integrations)
+// Send message (API key auth - for external integrations) - REQUIRES PAYMENT
 router.post('/send', authenticateApiKey, async (req, res) => {
   try {
-    let subAccountId;
+    let subAccount;
 
     if (req.authType === 'subAccount') {
-      subAccountId = req.subAccount.id;
+      subAccount = req.subAccount;
     } else {
       // Customer API key - must specify sub-account
       const { subAccountId: providedId } = req.body;
@@ -201,15 +203,21 @@ router.post('/send', authenticateApiKey, async (req, res) => {
         return res.status(400).json({ error: 'subAccountId is required' });
       }
 
-      const subAccount = await SubAccount.findOne({
+      subAccount = await SubAccount.findOne({
         where: { id: providedId, customerId: req.customer.id }
       });
 
       if (!subAccount) {
         return res.status(404).json({ error: 'Sub-account not found' });
       }
+    }
 
-      subAccountId = subAccount.id;
+    // Check payment status (admin bypass)
+    if (req.customer.role !== 'admin' && !subAccount.isPaid) {
+      return res.status(402).json({
+        error: 'Payment required',
+        message: 'This sub-account requires an active subscription'
+      });
     }
 
     const { to, message, type = 'text', mediaUrl, fileName } = req.body;
@@ -218,7 +226,7 @@ router.post('/send', authenticateApiKey, async (req, res) => {
       return res.status(400).json({ error: 'To and message are required' });
     }
 
-    const result = await whatsappService.sendMessage(subAccountId, to, message, type, mediaUrl, fileName);
+    const result = await whatsappService.sendMessage(subAccount.id, to, message, type, mediaUrl, fileName);
     res.json({ success: true, message: result });
   } catch (error) {
     logger.error('API Send message error:', error);
