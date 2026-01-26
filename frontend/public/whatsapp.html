@@ -312,20 +312,26 @@
       return null;
     }
 
-    // Method 3: Try GHL's postMessage SDK
+    // Method 3: Try GHL's postMessage SDK - REQUEST_USER_DATA
     function requestGHLContext() {
       try {
-        // Request context from GHL parent frame
+        console.log('Requesting user data from GHL parent...');
+        // GHL's official method to get user context
+        window.parent.postMessage({ message: "REQUEST_USER_DATA" }, "*");
+        // Also try other possible formats
         window.parent.postMessage({ type: 'REQUEST_CONTEXT' }, '*');
-        window.parent.postMessage({ action: 'getLocationId' }, '*');
+        window.parent.postMessage({ action: 'getContext' }, '*');
       } catch (e) {
-        console.log('Cannot send postMessage to parent');
+        console.log('Cannot send postMessage to parent:', e);
       }
     }
 
     // Listen for postMessage from GHL
     window.addEventListener('message', function(event) {
-      console.log('Received postMessage:', event.origin, event.data);
+      // Log all messages for debugging
+      if (event.data && event.data.type !== 'rrweb') {
+        console.log('Received postMessage:', event.origin, JSON.stringify(event.data).substring(0, 200));
+      }
 
       // Accept messages from GHL domains
       const ghlDomains = ['gohighlevel.com', 'leadconnectorhq.com', 'msgsndr.com'];
@@ -334,10 +340,19 @@
       if (isGHL || event.origin === window.location.origin) {
         const data = event.data;
         if (data) {
-          // Check various possible location ID fields
+          // Handle GHL's REQUEST_USER_DATA_RESPONSE
+          if (data.message === 'REQUEST_USER_DATA_RESPONSE' && data.payload) {
+            console.log('Got GHL user data response (encrypted):', data.payload.substring(0, 50) + '...');
+            // Send to backend for decryption
+            decryptGHLData(data.payload);
+            return;
+          }
+
+          // Check various possible location ID fields (unencrypted)
           const newLocationId = data.locationId || data.location_id || data.activeLocation ||
-                               (data.location && data.location.id);
-          if (newLocationId) {
+                               (data.location && data.location.id) ||
+                               (data.data && data.data.locationId);
+          if (newLocationId && !isTemplateVariable(newLocationId)) {
             console.log('Got locationId from postMessage:', newLocationId);
             locationId = newLocationId;
             init();
@@ -345,6 +360,30 @@
         }
       }
     });
+
+    // Try to decrypt GHL user data via backend
+    async function decryptGHLData(encryptedData) {
+      try {
+        console.log('Sending encrypted data to backend for decryption...');
+        const res = await fetch(apiBase + '/api/embed/decrypt-ghl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ encryptedData })
+        });
+        if (res.ok) {
+          const result = await res.json();
+          if (result.activeLocation) {
+            console.log('Decrypted locationId:', result.activeLocation);
+            locationId = result.activeLocation;
+            init();
+          }
+        } else {
+          console.log('Decryption failed - Shared Secret not configured?');
+        }
+      } catch (e) {
+        console.log('Decrypt error:', e.message);
+      }
+    }
 
     // Main initialization
     async function init() {

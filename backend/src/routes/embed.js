@@ -901,6 +901,48 @@ function renderErrorPage(message) {
   `;
 }
 
+// Decrypt GHL user data (from REQUEST_USER_DATA postMessage)
+// Requires GHL_SHARED_SECRET in .env
+router.post('/decrypt-ghl', async (req, res) => {
+  try {
+    const { encryptedData } = req.body;
+
+    if (!encryptedData) {
+      return res.status(400).json({ error: 'Encrypted data required' });
+    }
+
+    const sharedSecret = process.env.GHL_SHARED_SECRET;
+    if (!sharedSecret) {
+      logger.warn('GHL_SHARED_SECRET not configured - cannot decrypt user data');
+      return res.status(500).json({ error: 'Shared secret not configured' });
+    }
+
+    // Decrypt using AES (CryptoJS compatible)
+    const CryptoJS = require('crypto-js');
+    const decrypted = CryptoJS.AES.decrypt(encryptedData, sharedSecret).toString(CryptoJS.enc.Utf8);
+
+    if (!decrypted) {
+      return res.status(400).json({ error: 'Decryption failed - invalid data or secret' });
+    }
+
+    const userData = JSON.parse(decrypted);
+    logger.info('Decrypted GHL user data:', { userId: userData.userId, activeLocation: userData.activeLocation });
+
+    // Return the decrypted data (including activeLocation which is the locationId)
+    res.json({
+      success: true,
+      userId: userData.userId,
+      companyId: userData.companyId,
+      activeLocation: userData.activeLocation,
+      role: userData.role,
+      email: userData.email
+    });
+  } catch (error) {
+    logger.error('GHL decrypt error:', error.message);
+    res.status(500).json({ error: 'Decryption failed' });
+  }
+});
+
 // Export router and helper functions
 router.setToken = setToken;
 router.generateToken = generateToken;
