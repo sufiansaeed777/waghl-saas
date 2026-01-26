@@ -2,9 +2,10 @@ const { Boom } = require('@hapi/boom');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
-const { SubAccount, Message } = require('../models');
+const { SubAccount, Message, Customer } = require('../models');
 const webhookService = require('./webhook');
 const ghlService = require('./ghl');
+const emailService = require('./email');
 const logger = require('../utils/logger');
 
 // Baileys will be loaded dynamically
@@ -151,6 +152,22 @@ class WhatsAppService {
           reason: lastDisconnect?.error?.message || 'unknown'
         });
 
+        // Send disconnection email (async)
+        try {
+          const customer = await Customer.findByPk(subAccount.customerId);
+          if (customer) {
+            emailService.sendWhatsAppDisconnected(
+              customer.email,
+              customer.name,
+              subAccount.phoneNumber,
+              subAccount.name,
+              lastDisconnect?.error?.message || 'Connection lost'
+            ).catch(err => logger.error('Failed to send WhatsApp disconnected email:', err));
+          }
+        } catch (emailErr) {
+          logger.error('Error sending WhatsApp disconnected email:', emailErr);
+        }
+
       } else if (connection === 'open') {
         const phoneNumber = socket.user?.id?.split(':')[0] || null;
 
@@ -170,6 +187,21 @@ class WhatsAppService {
           status: 'connected',
           phoneNumber
         });
+
+        // Send email notification (async)
+        try {
+          const customer = await Customer.findByPk(subAccount.customerId);
+          if (customer) {
+            emailService.sendWhatsAppConnected(
+              customer.email,
+              customer.name,
+              phoneNumber,
+              subAccount.name
+            ).catch(err => logger.error('Failed to send WhatsApp connected email:', err));
+          }
+        } catch (emailErr) {
+          logger.error('Error sending WhatsApp connected email:', emailErr);
+        }
       }
     } catch (error) {
       logger.error(`Handle connection update error for ${subAccountId}:`, error);

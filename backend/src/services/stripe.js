@@ -1,5 +1,6 @@
 const Stripe = require('stripe');
 const { Customer, SubAccount } = require('../models');
+const emailService = require('./email');
 const logger = require('../utils/logger');
 
 // Initialize Stripe only if key is provided
@@ -97,6 +98,12 @@ class StripeService {
             }
           }
 
+          // Send subscription activated email
+          if (customer) {
+            emailService.sendSubscriptionActivated(customer.email, customer.name, customer.planType || 'Standard')
+              .catch(err => logger.error('Failed to send subscription activated email:', err));
+          }
+
           logger.info(`Checkout completed for customer ${customerId}`);
           break;
         }
@@ -135,6 +142,10 @@ class StripeService {
               { isPaid: false },
               { where: { customerId: customer.id } }
             );
+
+            // Send subscription cancelled email
+            emailService.sendSubscriptionCancelled(customer.email, customer.name)
+              .catch(err => logger.error('Failed to send subscription cancelled email:', err));
 
             logger.info(`Subscription cancelled for customer ${customer.id}`);
           }

@@ -182,6 +182,65 @@ router.put('/customers/:id/access', async (req, res) => {
   }
 });
 
+// Toggle sub-account payment status (isPaid)
+router.put('/sub-accounts/:id/payment', async (req, res) => {
+  try {
+    const { isPaid } = req.body;
+    const subAccount = await SubAccount.findByPk(req.params.id, {
+      include: [{ model: Customer, as: 'customer', attributes: ['id', 'email', 'name'] }]
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // If isPaid is provided, set it; otherwise toggle
+    subAccount.isPaid = typeof isPaid === 'boolean' ? isPaid : !subAccount.isPaid;
+    await subAccount.save();
+
+    logger.info(`Admin set isPaid=${subAccount.isPaid} for sub-account ${subAccount.id}`);
+
+    res.json({
+      message: `Sub-account ${subAccount.isPaid ? 'marked as paid' : 'marked as unpaid'}`,
+      subAccount
+    });
+  } catch (error) {
+    logger.error('Admin toggle payment error:', error);
+    res.status(500).json({ error: 'Failed to toggle payment status' });
+  }
+});
+
+// Bulk update payment status for multiple sub-accounts
+router.put('/sub-accounts/bulk-payment', async (req, res) => {
+  try {
+    const { subAccountIds, isPaid } = req.body;
+
+    if (!Array.isArray(subAccountIds) || subAccountIds.length === 0) {
+      return res.status(400).json({ error: 'subAccountIds array is required' });
+    }
+
+    if (typeof isPaid !== 'boolean') {
+      return res.status(400).json({ error: 'isPaid boolean is required' });
+    }
+
+    const [updatedCount] = await SubAccount.update(
+      { isPaid },
+      { where: { id: subAccountIds } }
+    );
+
+    logger.info(`Admin bulk updated isPaid=${isPaid} for ${updatedCount} sub-accounts`);
+
+    res.json({
+      message: `Updated ${updatedCount} sub-accounts`,
+      updatedCount,
+      isPaid
+    });
+  } catch (error) {
+    logger.error('Admin bulk payment update error:', error);
+    res.status(500).json({ error: 'Failed to bulk update payment status' });
+  }
+});
+
 // Get dashboard stats
 router.get('/stats', async (req, res) => {
   try {
