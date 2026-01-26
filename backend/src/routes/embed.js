@@ -54,9 +54,9 @@ router.get('/url/:subAccountId', async (req, res) => {
     // Generate embed token
     const token = getEmbedToken(subAccountId);
 
-    // Build embed URL
+    // Build embed URL - use static HTML page with token as query param
     const backendUrl = process.env.API_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const embedUrl = `${backendUrl}/api/embed/qr/${token}.html`;
+    const embedUrl = `${backendUrl}/whatsapp.html?token=${token}`;
 
     res.json({
       success: true,

@@ -159,9 +159,9 @@ router.get('/:id/embed-url', authenticateJWT, async (req, res) => {
       .update(subAccount.id + process.env.JWT_SECRET)
       .digest('hex');
 
-    // Build embed URL
+    // Build embed URL - use static HTML page with token as query param
     const backendUrl = process.env.API_URL || process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3000}`;
-    const embedUrl = `${backendUrl}/api/embed/qr/${token}.html`;
+    const embedUrl = `${backendUrl}/whatsapp.html?token=${token}`;
 
     // Store token mapping (update embed service)
     const embedService = require('./embed');
