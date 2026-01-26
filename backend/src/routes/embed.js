@@ -45,6 +45,16 @@ router.get('/token-by-location/:locationId', async (req, res) => {
   try {
     const { locationId } = req.params;
 
+    // Reject unresolved template variables
+    if (!locationId ||
+        locationId.includes('location.id') ||
+        locationId.includes('location_id}') ||
+        locationId === '{location.id}' ||
+        locationId === '{{location.id}}') {
+      logger.warn('Received invalid/template locationId:', locationId);
+      return res.status(400).json({ error: 'Invalid location ID. GHL template variable was not resolved.' });
+    }
+
     // Find sub-account by GHL location ID
     let subAccount = await SubAccount.findOne({
       where: { ghlLocationId: locationId }

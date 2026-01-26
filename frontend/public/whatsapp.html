@@ -149,26 +149,77 @@
     // Debug: Log what we received
     console.log('URL Params:', { token: !!token, locationId, ssoKey: !!ssoKey, error: errorParam, hash: window.location.hash });
     console.log('Referrer:', document.referrer);
+    console.log('Full URL:', window.location.href);
+
+    // Helper: Check if locationId is an unresolved template variable
+    function isTemplateVariable(id) {
+      if (!id) return true;
+      // Check all possible variants of unresolved GHL template variables
+      const templatePatterns = [
+        '{location.id}',
+        '{{location.id}}',
+        '%7Blocation.id%7D',           // URL encoded single braces
+        '%7B%7Blocation.id%7D%7D',     // URL encoded double braces
+        'location.id',
+        '{{location_id}}',
+        '{location_id}'
+      ];
+      return templatePatterns.some(p => id === p || id.includes('location.id') || id.includes('location_id}'));
+    }
+
+    // PRIORITY 1: Extract locationId from GHL referrer URL (most reliable in iframe)
+    function extractFromReferrer() {
+      try {
+        const referrer = document.referrer;
+        if (referrer) {
+          // GHL URLs look like: app.gohighlevel.com/v2/location/ABC123/...
+          const match = referrer.match(/\/location\/([a-zA-Z0-9]+)/);
+          if (match && match[1]) {
+            console.log('Extracted locationId from referrer:', match[1]);
+            return match[1];
+          }
+        }
+      } catch (e) {
+        console.log('Failed to extract from referrer:', e);
+      }
+      return null;
+    }
+
+    // Clean up template variables FIRST, before any logic
+    if (isTemplateVariable(locationId)) {
+      console.log('LocationId is a template variable, clearing:', locationId);
+      locationId = null;
+    }
+
+    // If no valid locationId from URL, try referrer IMMEDIATELY
+    if (!locationId) {
+      locationId = extractFromReferrer();
+    }
 
     // Try localStorage for saved token (from OAuth or setup page)
-    const savedToken = localStorage.getItem('waghl_token');
-    const savedLocationId = localStorage.getItem('waghl_locationId');
-
-    if (savedToken) {
-      console.log('Found saved token in localStorage');
-    }
-    if (savedLocationId) {
-      console.log('Found saved locationId in localStorage:', savedLocationId);
+    let savedToken = null;
+    let savedLocationId = null;
+    try {
+      savedToken = localStorage.getItem('waghl_token');
+      savedLocationId = localStorage.getItem('waghl_locationId');
+      if (savedToken) console.log('Found saved token in localStorage');
+      if (savedLocationId) console.log('Found saved locationId in localStorage:', savedLocationId);
+    } catch (e) {
+      console.log('localStorage not available (likely iframe restriction):', e.message);
     }
 
     // Save token to localStorage if we have one in URL
     if (token) {
-      localStorage.setItem('waghl_token', token);
-      console.log('Saved token to localStorage');
+      try {
+        localStorage.setItem('waghl_token', token);
+        console.log('Saved token to localStorage');
+      } catch (e) { /* ignore */ }
     }
-    if (locationId && locationId !== '{{location.id}}' && locationId !== '{location.id}') {
-      localStorage.setItem('waghl_locationId', locationId);
-      console.log('Saved locationId to localStorage');
+    if (locationId && !isTemplateVariable(locationId)) {
+      try {
+        localStorage.setItem('waghl_locationId', locationId);
+        console.log('Saved locationId to localStorage');
+      } catch (e) { /* ignore */ }
     }
 
     // Use saved values if not in URL
@@ -176,7 +227,7 @@
       token = savedToken;
       console.log('Using token from localStorage');
     }
-    if (!locationId && savedLocationId) {
+    if (!locationId && savedLocationId && !isTemplateVariable(savedLocationId)) {
       locationId = savedLocationId;
       console.log('Using locationId from localStorage');
     }
@@ -205,10 +256,7 @@
       `;
     }
 
-    // Clean up template variables that weren't replaced
-    if (locationId === '{location.id}' || locationId === '{{location.id}}' || locationId === '%7Blocation.id%7D') {
-      locationId = null;
-    }
+    console.log('Final values:', { token: !!token, locationId });
 
     // Method 1: Try SSO key first (most reliable for GHL Custom Pages)
     async function trySSO() {
