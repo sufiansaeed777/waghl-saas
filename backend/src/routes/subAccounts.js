@@ -30,6 +30,29 @@ router.post('/', authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: 'Name is required' });
     }
 
+    // Validate GHL Location ID if provided
+    if (ghlLocationId) {
+      // Format validation - GHL location IDs are alphanumeric, typically 20+ chars
+      if (!/^[a-zA-Z0-9]{10,50}$/.test(ghlLocationId)) {
+        return res.status(400).json({
+          error: 'Invalid GHL Location ID format',
+          message: 'Location ID should be alphanumeric (found in GHL Settings → Business Info)'
+        });
+      }
+
+      // Check for duplicates - same location ID shouldn't be used twice
+      const existingSubAccount = await SubAccount.findOne({
+        where: { ghlLocationId }
+      });
+
+      if (existingSubAccount) {
+        return res.status(400).json({
+          error: 'GHL Location ID already in use',
+          message: 'This location is already connected to another sub-account'
+        });
+      }
+    }
+
     const subAccount = await SubAccount.create({
       customerId: req.customer.id,
       name,
