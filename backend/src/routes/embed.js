@@ -70,6 +70,125 @@ router.get('/token-by-location/:locationId', async (req, res) => {
   }
 });
 
+// GHL SSO - Exchange SSO key for embed token
+// GHL Custom Pages can pass ssoKey which contains encrypted location data
+router.post('/sso', async (req, res) => {
+  try {
+    const { ssoKey } = req.body;
+
+    if (!ssoKey) {
+      return res.status(400).json({ error: 'SSO key required' });
+    }
+
+    const ssoSecret = process.env.GHL_SSO_KEY;
+    if (!ssoSecret) {
+      logger.error('GHL_SSO_KEY not configured');
+      return res.status(500).json({ error: 'SSO not configured' });
+    }
+
+    // Decrypt SSO key
+    // GHL SSO uses AES-256-CBC encryption with the SSO key as password
+    let ssoData;
+    try {
+      // GHL SSO key format: base64(IV:encrypted_data)
+      const decoded = Buffer.from(ssoKey, 'base64').toString('utf8');
+      const [ivHex, encryptedHex] = decoded.split(':');
+
+      if (!ivHex || !encryptedHex) {
+        // Alternative: Try direct JSON decode (some GHL versions use plain JSON)
+        try {
+          ssoData = JSON.parse(Buffer.from(ssoKey, 'base64').toString('utf8'));
+        } catch (e) {
+          throw new Error('Invalid SSO key format');
+        }
+      } else {
+        // AES decryption
+        const iv = Buffer.from(ivHex, 'hex');
+        const encrypted = Buffer.from(encryptedHex, 'hex');
+        const key = crypto.createHash('sha256').update(ssoSecret).digest();
+
+        const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+        let decrypted = decipher.update(encrypted, undefined, 'utf8');
+        decrypted += decipher.final('utf8');
+
+        ssoData = JSON.parse(decrypted);
+      }
+    } catch (decryptError) {
+      logger.error('SSO decryption failed:', decryptError.message);
+      return res.status(401).json({ error: 'Invalid SSO key' });
+    }
+
+    // Extract location ID from SSO data
+    const locationId = ssoData.locationId || ssoData.location_id || ssoData.activeLocation;
+
+    if (!locationId) {
+      logger.warn('SSO data missing locationId:', ssoData);
+      return res.status(400).json({ error: 'Location ID not found in SSO data' });
+    }
+
+    // Find sub-account by GHL location ID
+    const subAccount = await SubAccount.findOne({
+      where: { ghlLocationId: locationId }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({
+        error: 'Location not found. Please install the app first.',
+        locationId
+      });
+    }
+
+    // Generate token
+    const token = generateToken(subAccount.id);
+    tokenCache.set(token, subAccount.id);
+
+    res.json({
+      success: true,
+      token,
+      subAccountId: subAccount.id,
+      subAccountName: subAccount.name,
+      locationId
+    });
+  } catch (error) {
+    logger.error('SSO exchange error:', error);
+    res.status(500).json({ error: 'SSO exchange failed' });
+  }
+});
+
+// Alternative: GHL can also use a session key via query param
+// This endpoint validates a session and returns embed context
+router.get('/session', async (req, res) => {
+  try {
+    const { locationId, companyId, userId } = req.query;
+
+    // If locationId is directly provided (from GHL Custom Menu Link)
+    if (locationId && locationId !== '{location.id}' && locationId !== '{{location.id}}') {
+      const subAccount = await SubAccount.findOne({
+        where: { ghlLocationId: locationId }
+      });
+
+      if (!subAccount) {
+        return res.status(404).json({ error: 'Location not found. Please install the app first.' });
+      }
+
+      const token = generateToken(subAccount.id);
+      tokenCache.set(token, subAccount.id);
+
+      return res.json({
+        success: true,
+        token,
+        subAccountId: subAccount.id,
+        subAccountName: subAccount.name
+      });
+    }
+
+    return res.status(400).json({ error: 'Location ID required' });
+  } catch (error) {
+    logger.error('Session validation error:', error);
+    res.status(500).json({ error: 'Session validation failed' });
+  }
+});
+
 // Get embed URL for a sub-account (authenticated endpoint)
 router.get('/url/:subAccountId', async (req, res) => {
   try {

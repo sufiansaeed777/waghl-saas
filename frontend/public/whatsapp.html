@@ -136,55 +136,146 @@
   </div>
 
   <script>
-    // Get token or locationId from URL
+    // Get parameters from URL (query string and hash)
     const urlParams = new URLSearchParams(window.location.search);
-    let token = urlParams.get('token');
-    let locationId = urlParams.get('locationId');
+    const hashParams = new URLSearchParams(window.location.hash.replace('#', ''));
+    let token = urlParams.get('token') || hashParams.get('token');
+    let locationId = urlParams.get('locationId') || hashParams.get('locationId') ||
+                     urlParams.get('location_id') || hashParams.get('location_id');
+    let ssoKey = urlParams.get('ssoKey') || hashParams.get('ssoKey');
     const apiBase = window.location.origin;
 
-    // If locationId is a template variable (not replaced by GHL), try multiple methods
-    if (!locationId || locationId === '{location.id}' || locationId === '{{location.id}}') {
-      // Method 1: Try to extract from referrer URL
-      const referrer = document.referrer;
-      const locationMatch = referrer.match(/\/location\/([a-zA-Z0-9]+)/);
-      if (locationMatch) {
-        locationId = locationMatch[1];
+    // Debug: Log what we received
+    console.log('URL Params:', { token: !!token, locationId, ssoKey: !!ssoKey, hash: window.location.hash });
+
+    // Clean up template variables that weren't replaced
+    if (locationId === '{location.id}' || locationId === '{{location.id}}' || locationId === '%7Blocation.id%7D') {
+      locationId = null;
+    }
+
+    // Method 1: Try SSO key first (most reliable for GHL Custom Pages)
+    async function trySSO() {
+      if (!ssoKey) return false;
+
+      try {
+        console.log('Attempting SSO exchange...');
+        const res = await fetch(apiBase + '/api/embed/sso', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ssoKey })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          token = data.token;
+          if (data.subAccountName) {
+            document.getElementById('subAccountName').textContent = data.subAccountName;
+          }
+          console.log('SSO successful, locationId:', data.locationId);
+          return true;
+        }
+      } catch (e) {
+        console.log('SSO failed:', e.message);
+      }
+      return false;
+    }
+
+    // Method 2: Try to extract locationId from referrer or parent (fallback)
+    function tryExtractLocationId() {
+      // From referrer URL
+      try {
+        const referrer = document.referrer;
+        const locationMatch = referrer.match(/\/location\/([a-zA-Z0-9]+)/);
+        if (locationMatch) {
+          console.log('Found locationId in referrer:', locationMatch[1]);
+          return locationMatch[1];
+        }
+      } catch (e) {}
+
+      // From parent URL (if accessible)
+      try {
+        const parentUrl = window.parent.location.href;
+        const parentMatch = parentUrl.match(/\/location\/([a-zA-Z0-9]+)/);
+        if (parentMatch) {
+          console.log('Found locationId in parent:', parentMatch[1]);
+          return parentMatch[1];
+        }
+      } catch (e) {
+        console.log('Cannot access parent (cross-origin)');
       }
 
-      // Method 2: Try to get from parent URL (if same origin or allowed)
-      if (!locationId || locationId === '{location.id}') {
-        try {
-          const parentUrl = window.parent.location.href;
-          const parentMatch = parentUrl.match(/\/location\/([a-zA-Z0-9]+)/);
-          if (parentMatch) {
-            locationId = parentMatch[1];
-          }
-        } catch (e) {
-          // Cross-origin - can't access parent
-          console.log('Cannot access parent location');
-        }
+      return null;
+    }
+
+    // Method 3: Try GHL's postMessage SDK
+    function requestGHLContext() {
+      try {
+        // Request context from GHL parent frame
+        window.parent.postMessage({ type: 'REQUEST_CONTEXT' }, '*');
+        window.parent.postMessage({ action: 'getLocationId' }, '*');
+      } catch (e) {
+        console.log('Cannot send postMessage to parent');
       }
     }
 
-    // Listen for postMessage from GHL (they might send location data)
+    // Listen for postMessage from GHL
     window.addEventListener('message', function(event) {
+      console.log('Received postMessage:', event.origin, event.data);
+
       // Accept messages from GHL domains
-      if (event.origin.includes('gohighlevel.com') || event.origin.includes('leadconnectorhq.com')) {
-        console.log('Received message from GHL:', event.data);
-        if (event.data && event.data.locationId) {
-          locationId = event.data.locationId;
-          init();
+      const ghlDomains = ['gohighlevel.com', 'leadconnectorhq.com', 'msgsndr.com'];
+      const isGHL = ghlDomains.some(d => event.origin.includes(d));
+
+      if (isGHL || event.origin === window.location.origin) {
+        const data = event.data;
+        if (data) {
+          // Check various possible location ID fields
+          const newLocationId = data.locationId || data.location_id || data.activeLocation ||
+                               (data.location && data.location.id);
+          if (newLocationId) {
+            console.log('Got locationId from postMessage:', newLocationId);
+            locationId = newLocationId;
+            init();
+          }
         }
       }
     });
 
-    // Initialize the page
-    init();
-
+    // Main initialization
     async function init() {
-      // If locationId provided, fetch token first
-      if (!token && locationId && locationId !== '{location.id}' && locationId !== '{{location.id}}') {
+      // Already have token? Use it directly
+      if (token) {
+        console.log('Using provided token');
+        loadStatus();
+        return;
+      }
+
+      // Try SSO first
+      if (ssoKey && await trySSO()) {
+        loadStatus();
+        return;
+      }
+
+      // Try to extract locationId from environment
+      if (!locationId) {
+        locationId = tryExtractLocationId();
+      }
+
+      // If still no locationId, request from GHL and wait briefly
+      if (!locationId) {
+        requestGHLContext();
+        // Give GHL a moment to respond, then check again
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        if (!locationId) {
+          locationId = tryExtractLocationId();
+        }
+      }
+
+      // If we have locationId, fetch token
+      if (locationId) {
         try {
+          console.log('Fetching token for locationId:', locationId);
           const res = await fetch(apiBase + '/api/embed/token-by-location/' + locationId);
           if (!res.ok) {
             const data = await res.json();
@@ -197,24 +288,31 @@
           }
           loadStatus();
         } catch (err) {
-          document.getElementById('content').innerHTML = `
-            <div class="error-box">
-              <h1>Error</h1>
-              <p>${err.message || 'Failed to load. Please install the app first.'}</p>
-            </div>
-          `;
+          showError(err.message || 'Failed to load. Please install the app first.');
         }
-      } else if (token) {
-        loadStatus();
       } else {
-        document.getElementById('content').innerHTML = `
-          <div class="error-box">
-            <h1>Error</h1>
-            <p>Missing token or locationId. Please use a valid embed URL.</p>
-          </div>
-        `;
+        // No way to identify location - show helpful error
+        showError('Could not identify your GHL location. Please ensure you have installed the app from the GHL Marketplace.');
       }
     }
+
+    function showError(message) {
+      document.getElementById('content').innerHTML = `
+        <div class="error-box">
+          <h1>Setup Required</h1>
+          <p>${message}</p>
+          <div class="info-box" style="margin-top: 16px;">
+            <p><strong>To fix this:</strong><br>
+            1. Install the app from the GHL Marketplace<br>
+            2. Complete the OAuth authorization<br>
+            3. Refresh this page</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // Start initialization
+    init();
 
     async function loadStatus() {
       try {
