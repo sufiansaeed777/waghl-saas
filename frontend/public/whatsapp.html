@@ -179,8 +179,12 @@
     // Handle error from redirect or setup mode
     let hasError = false;
 
-    // If this is setup mode (after OAuth), just show success and don't load QR
-    if (isSetup && token) {
+    // Check if we're inside an iframe (GHL Custom Page)
+    const isInIframe = window.self !== window.top;
+
+    // If this is setup mode (after OAuth) AND not inside GHL iframe, show success
+    // Inside GHL Custom Page, always show the QR code interface
+    if (isSetup && token && !isInIframe) {
       hasError = true; // Prevent further initialization
       document.getElementById('subAccountName').textContent = 'Installation Complete';
       document.getElementById('content').innerHTML = `
