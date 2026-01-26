@@ -159,6 +159,14 @@ router.post('/sso', async (req, res) => {
 // This endpoint validates a session and returns embed context
 // With redirect=true, it redirects to the whatsapp.html page with token
 router.get('/session', async (req, res) => {
+  // Prevent caching of this endpoint
+  res.set({
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+    'Surrogate-Control': 'no-store'
+  });
+
   try {
     const { locationId, companyId, userId, redirect } = req.query;
 
