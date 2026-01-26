@@ -13,6 +13,9 @@ const whatsappService = require('./services/whatsapp');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Trust proxy (behind nginx/varnish)
+app.set('trust proxy', 1);
+
 // Security middleware
 app.use(helmet());
 app.use(cors({
