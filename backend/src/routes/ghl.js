@@ -219,8 +219,31 @@ router.get('/callback', async (req, res) => {
 
     if (isFromGHL) {
       // Redirect to WhatsApp connection page for GHL marketplace installs
+      // Using JavaScript redirect for better cross-origin/iframe compatibility
       logger.info('Redirecting to WhatsApp setup page (from GHL)');
-      res.redirect(whatsappPageUrl);
+      res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <meta http-equiv="refresh" content="0;url=${whatsappPageUrl}">
+          <title>Redirecting...</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%); }
+            .box { background: white; padding: 40px; border-radius: 16px; text-align: center; }
+            .spinner { width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #0f766e; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+            @keyframes spin { to { transform: rotate(360deg); } }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <div class="spinner"></div>
+            <p>Setting up WhatsApp Connect...</p>
+          </div>
+          <script>window.location.href = "${whatsappPageUrl}";</script>
+        </body>
+        </html>
+      `);
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
       res.redirect(`${frontendUrl}/sub-accounts/${subAccount.id}?ghl_connected=true`);
