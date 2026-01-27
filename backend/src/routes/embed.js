@@ -901,6 +901,37 @@ function renderErrorPage(message) {
   `;
 }
 
+// Get all GHL locations with app installed (for location picker)
+router.get('/locations', async (req, res) => {
+  try {
+    // Find all sub-accounts that have GHL connected
+    const subAccounts = await SubAccount.findAll({
+      where: {
+        ghlLocationId: { [require('sequelize').Op.ne]: null },
+        ghlConnected: true,
+        isActive: true
+      },
+      attributes: ['id', 'name', 'ghlLocationId'],
+      order: [['name', 'ASC']]
+    });
+
+    const locations = subAccounts.map(sa => ({
+      id: sa.ghlLocationId,
+      name: sa.name || `Location ${sa.ghlLocationId.substring(0, 8)}`,
+      subAccountId: sa.id
+    }));
+
+    res.json({
+      success: true,
+      locations,
+      count: locations.length
+    });
+  } catch (error) {
+    logger.error('Get locations error:', error);
+    res.status(500).json({ error: 'Failed to get locations' });
+  }
+});
+
 // Decrypt GHL user data (from REQUEST_USER_DATA postMessage)
 // Requires GHL_SHARED_SECRET in .env
 router.post('/decrypt-ghl', async (req, res) => {

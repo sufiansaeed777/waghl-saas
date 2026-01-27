@@ -116,6 +116,30 @@
     .error-box p { color: #6b7280; }
     .loading { padding: 60px 20px; }
     .loading .spinner { width: 48px; height: 48px; border-width: 4px; color: #0f766e; margin: 0 auto 20px; }
+    .location-picker { margin-top: 20px; }
+    .location-picker select {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      background: white;
+      cursor: pointer;
+    }
+    .location-picker select:focus {
+      outline: none;
+      border-color: #0f766e;
+    }
+    .setup-box {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .setup-box h2 { color: #92400e; font-size: 18px; margin-bottom: 12px; }
+    .setup-box p { color: #78350f; font-size: 14px; line-height: 1.5; }
   </style>
 </head>
 <body>
@@ -418,41 +442,253 @@
       }
     }
 
-    // Main initialization
+    // SSO with retry and timeout
+    async function trySSOWithRetry(maxRetries = 3, timeoutMs = 2000) {
+      console.log('Attempting SSO with retry...');
+
+      return new Promise((resolve) => {
+        let resolved = false;
+        let retryCount = 0;
+
+        // Handler for SSO response
+        const handleResponse = (event) => {
+          if (resolved) return;
+
+          const ghlDomains = ['gohighlevel.com', 'leadconnectorhq.com', 'msgsndr.com'];
+          const isGHL = ghlDomains.some(d => event.origin.includes(d));
+
+          if (isGHL && event.data && event.data.message === 'REQUEST_USER_DATA_RESPONSE' && event.data.payload) {
+            console.log('Got SSO response!');
+            resolved = true;
+            window.removeEventListener('message', handleResponse);
+
+            // Decrypt the payload
+            fetch(apiBase + '/api/embed/decrypt-ghl', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ encryptedData: event.data.payload })
+            })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+              if (data && data.activeLocation) {
+                resolve(data.activeLocation);
+              } else {
+                resolve(null);
+              }
+            })
+            .catch(() => resolve(null));
+          }
+        };
+
+        window.addEventListener('message', handleResponse);
+
+        // Send request with retries
+        const sendRequest = () => {
+          if (resolved || retryCount >= maxRetries) {
+            if (!resolved) {
+              console.log('SSO timed out after', retryCount, 'retries');
+              window.removeEventListener('message', handleResponse);
+              resolve(null);
+            }
+            return;
+          }
+
+          console.log('Sending REQUEST_USER_DATA (attempt', retryCount + 1, ')');
+          try {
+            window.parent.postMessage({ message: "REQUEST_USER_DATA" }, "*");
+          } catch (e) {
+            console.log('postMessage error:', e);
+          }
+
+          retryCount++;
+          setTimeout(sendRequest, timeoutMs / maxRetries);
+        };
+
+        sendRequest();
+
+        // Final timeout
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            window.removeEventListener('message', handleResponse);
+            resolve(null);
+          }
+        }, timeoutMs);
+      });
+    }
+
+    // Fetch available locations for picker
+    async function fetchLocations() {
+      try {
+        const res = await fetch(apiBase + '/api/embed/locations');
+        if (res.ok) {
+          const data = await res.json();
+          return data.locations || [];
+        }
+      } catch (e) {
+        console.log('Failed to fetch locations:', e);
+      }
+      return [];
+    }
+
+    // Show location picker UI
+    function showLocationPicker(locations) {
+      if (locations.length === 0) {
+        showError('No GHL locations found. Please install the app from the GHL Marketplace first.');
+        return;
+      }
+
+      // If only one location, auto-select it
+      if (locations.length === 1) {
+        console.log('Only one location, auto-selecting:', locations[0].id);
+        selectLocation(locations[0].id);
+        return;
+      }
+
+      // Show picker for multiple locations
+      const options = locations.map(loc =>
+        `<option value="${loc.id}">${loc.name}</option>`
+      ).join('');
+
+      document.getElementById('content').innerHTML = `
+        <div class="setup-box">
+          <h2>Select Your Location</h2>
+          <p>Multiple GHL locations found. Please select the one you want to connect:</p>
+        </div>
+        <div class="location-picker">
+          <select id="locationSelect">
+            <option value="">-- Select Location --</option>
+            ${options}
+          </select>
+          <button class="btn btn-primary" onclick="onLocationSelected()">
+            Continue
+          </button>
+        </div>
+        <div class="info-box">
+          <p><strong>Tip:</strong> Your selection will be remembered for future visits.</p>
+        </div>
+      `;
+    }
+
+    // Handle location selection
+    function onLocationSelected() {
+      const select = document.getElementById('locationSelect');
+      const selectedId = select.value;
+
+      if (!selectedId) {
+        alert('Please select a location');
+        return;
+      }
+
+      selectLocation(selectedId);
+    }
+
+    // Select a location and continue
+    async function selectLocation(locId) {
+      console.log('Selected location:', locId);
+      locationId = locId;
+
+      // Save to localStorage for future visits
+      try {
+        localStorage.setItem('waghl_locationId', locId);
+      } catch (e) { /* ignore */ }
+
+      // Show loading
+      document.getElementById('content').innerHTML = `
+        <div class="loading">
+          <div class="spinner"></div>
+          <p style="color: #6b7280;">Loading...</p>
+        </div>
+      `;
+
+      // Fetch token for this location
+      try {
+        const res = await fetch(apiBase + '/api/embed/token-by-location/' + locId);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Location not found');
+        }
+        const data = await res.json();
+        token = data.token;
+
+        // Save token too
+        try {
+          localStorage.setItem('waghl_token', token);
+        } catch (e) { /* ignore */ }
+
+        if (data.subAccountName) {
+          document.getElementById('subAccountName').textContent = data.subAccountName;
+        }
+        loadStatus();
+      } catch (err) {
+        showError(err.message || 'Failed to load. Please try again.');
+      }
+    }
+
+    // Main initialization with complete fallback chain
     async function init() {
-      // Already have token? Use it directly
+      console.log('=== Starting initialization ===');
+
+      // STEP 1: Already have token? Use it directly
       if (token) {
-        console.log('Using provided token');
+        console.log('Step 1: Using provided token');
         loadStatus();
         return;
       }
 
-      // Try SSO first
+      // STEP 2: Try SSO key if provided
       if (ssoKey && await trySSO()) {
+        console.log('Step 2: SSO key worked');
         loadStatus();
         return;
       }
 
-      // Try to extract locationId from environment
+      // STEP 3: Try cookie-based auth
       if (!locationId) {
-        locationId = tryExtractLocationId();
-      }
-
-      // If still no locationId, request from GHL and wait briefly
-      if (!locationId) {
-        requestGHLContext();
-        // Give GHL a moment to respond, then check again
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        if (!locationId) {
-          locationId = tryExtractLocationId();
+        const cookieAuth = getGhlAuthCookie();
+        if (cookieAuth && cookieAuth.token) {
+          console.log('Step 3: Using cookie auth');
+          token = cookieAuth.token;
+          locationId = cookieAuth.locationId;
+          loadStatus();
+          return;
         }
       }
 
-      // If we have locationId, fetch token
-      if (locationId) {
+      // STEP 4: Try localStorage
+      if (!locationId && savedLocationId && !isTemplateVariable(savedLocationId)) {
+        console.log('Step 4: Using localStorage locationId');
+        locationId = savedLocationId;
+      }
+      if (!token && savedToken) {
+        console.log('Step 4: Using localStorage token');
+        token = savedToken;
+        loadStatus();
+        return;
+      }
+
+      // STEP 5: Try referrer extraction
+      if (!locationId) {
+        locationId = tryExtractLocationId();
+        if (locationId) {
+          console.log('Step 5: Extracted from referrer');
+        }
+      }
+
+      // STEP 6: Try SSO postMessage with retry
+      if (!locationId) {
+        console.log('Step 6: Trying SSO postMessage...');
+        const ssoLocationId = await trySSOWithRetry(3, 2000);
+        if (ssoLocationId) {
+          console.log('Step 6: SSO returned locationId:', ssoLocationId);
+          locationId = ssoLocationId;
+        }
+      }
+
+      // STEP 7: If we have locationId, fetch token
+      if (locationId && !isTemplateVariable(locationId)) {
         try {
-          console.log('Fetching token for locationId:', locationId);
+          console.log('Step 7: Fetching token for locationId:', locationId);
           const res = await fetch(apiBase + '/api/embed/token-by-location/' + locationId);
           if (!res.ok) {
             const data = await res.json();
@@ -460,17 +696,28 @@
           }
           const data = await res.json();
           token = data.token;
+
+          // Save for future
+          try {
+            localStorage.setItem('waghl_token', token);
+            localStorage.setItem('waghl_locationId', locationId);
+          } catch (e) { /* ignore */ }
+
           if (data.subAccountName) {
             document.getElementById('subAccountName').textContent = data.subAccountName;
           }
           loadStatus();
+          return;
         } catch (err) {
-          showError(err.message || 'Failed to load. Please install the app first.');
+          console.log('Step 7: Token fetch failed:', err.message);
+          // Fall through to location picker
         }
-      } else {
-        // No way to identify location - show helpful error
-        showError('Could not identify your GHL location. Please ensure you have installed the app from the GHL Marketplace.');
       }
+
+      // STEP 8: Show location picker as final fallback
+      console.log('Step 8: Showing location picker');
+      const locations = await fetchLocations();
+      showLocationPicker(locations);
     }
 
     function showError(message) {

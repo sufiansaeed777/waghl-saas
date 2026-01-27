@@ -210,8 +210,9 @@ router.get('/callback', async (req, res) => {
     res.cookie('ghl_auth', cookieValue, {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       httpOnly: false, // Allow JavaScript to read it
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'None' // Required for cross-site iframe
+      secure: true, // Required for SameSite=None and Partitioned
+      sameSite: 'None', // Required for cross-site iframe
+      partitioned: true // Chrome CHIPS - allows cookie in partitioned storage for iframes
     });
 
     logger.info('Set ghl_auth cookie for location:', finalLocationId);
