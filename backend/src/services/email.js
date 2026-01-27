@@ -1,4 +1,6 @@
 const nodemailer = require('nodemailer');
+const axios = require('axios');
+const FormData = require('form-data');
 const logger = require('../utils/logger');
 
 // Email configuration
@@ -6,7 +8,8 @@ const EMAIL_ENABLED = process.env.EMAIL_ENABLED === 'true';
 const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@example.com';
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'WAGHL SaaS';
 
-// Create transporter (supports SMTP, SendGrid, Mailgun, etc.)
+// Email provider type
+let emailProvider = null; // 'mailgun-api', 'smtp', or 'sendgrid'
 let transporter = null;
 
 function initTransporter() {
@@ -16,8 +19,13 @@ function initTransporter() {
   }
 
   // Support different email providers
-  if (process.env.SENDGRID_API_KEY) {
-    // SendGrid
+  if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN) {
+    // Mailgun API (preferred - uses API key directly)
+    emailProvider = 'mailgun-api';
+    logger.info('Email provider: Mailgun API');
+  } else if (process.env.SENDGRID_API_KEY) {
+    // SendGrid via SMTP
+    emailProvider = 'smtp';
     transporter = nodemailer.createTransport({
       host: 'smtp.sendgrid.net',
       port: 587,
@@ -26,18 +34,10 @@ function initTransporter() {
         pass: process.env.SENDGRID_API_KEY
       }
     });
-  } else if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN) {
-    // Mailgun
-    transporter = nodemailer.createTransport({
-      host: 'smtp.mailgun.org',
-      port: 587,
-      auth: {
-        user: `postmaster@${process.env.MAILGUN_DOMAIN}`,
-        pass: process.env.MAILGUN_API_KEY
-      }
-    });
+    logger.info('Email provider: SendGrid SMTP');
   } else if (process.env.SMTP_HOST) {
     // Generic SMTP
+    emailProvider = 'smtp';
     transporter = nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT) || 587,
@@ -47,13 +47,41 @@ function initTransporter() {
         pass: process.env.SMTP_PASS
       }
     });
+    logger.info('Email provider: Generic SMTP');
   } else {
-    logger.warn('No email provider configured. Set SENDGRID_API_KEY, MAILGUN_API_KEY/MAILGUN_DOMAIN, or SMTP_HOST');
+    logger.warn('No email provider configured. Set MAILGUN_API_KEY/MAILGUN_DOMAIN, SENDGRID_API_KEY, or SMTP_HOST');
     return null;
   }
 
   logger.info('Email transporter initialized');
-  return transporter;
+  return true;
+}
+
+// Send via Mailgun API
+async function sendViaMailgunAPI(to, subject, html, text) {
+  const domain = process.env.MAILGUN_DOMAIN;
+  const apiKey = process.env.MAILGUN_API_KEY;
+
+  const form = new FormData();
+  form.append('from', `${EMAIL_FROM_NAME} <${EMAIL_FROM}>`);
+  form.append('to', to);
+  form.append('subject', subject);
+  form.append('html', html);
+  if (text) form.append('text', text);
+
+  const response = await axios.post(
+    `https://api.mailgun.net/v3/${domain}/messages`,
+    form,
+    {
+      auth: {
+        username: 'api',
+        password: apiKey
+      },
+      headers: form.getHeaders()
+    }
+  );
+
+  return { messageId: response.data.id };
 }
 
 // Initialize on load
@@ -62,7 +90,7 @@ initTransporter();
 class EmailService {
   // Check if email is enabled
   isEnabled() {
-    return EMAIL_ENABLED && transporter !== null;
+    return EMAIL_ENABLED && (emailProvider === 'mailgun-api' || transporter !== null);
   }
 
   // Send email
@@ -72,14 +100,24 @@ class EmailService {
       return { success: false, reason: 'Email disabled' };
     }
 
+    const textContent = text || html.replace(/<[^>]*>/g, ''); // Strip HTML for text version
+
     try {
-      const result = await transporter.sendMail({
-        from: `"${EMAIL_FROM_NAME}" <${EMAIL_FROM}>`,
-        to,
-        subject,
-        html,
-        text: text || html.replace(/<[^>]*>/g, '') // Strip HTML for text version
-      });
+      let result;
+
+      if (emailProvider === 'mailgun-api') {
+        // Use Mailgun HTTP API
+        result = await sendViaMailgunAPI(to, subject, html, textContent);
+      } else {
+        // Use nodemailer SMTP
+        result = await transporter.sendMail({
+          from: `"${EMAIL_FROM_NAME}" <${EMAIL_FROM}>`,
+          to,
+          subject,
+          html,
+          text: textContent
+        });
+      }
 
       logger.info(`Email sent: ${subject} to ${to}`, { messageId: result.messageId });
       return { success: true, messageId: result.messageId };

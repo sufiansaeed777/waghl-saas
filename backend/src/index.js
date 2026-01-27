@@ -84,7 +84,27 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Body parsing
+// Stripe webhook needs raw body for signature verification - must be BEFORE express.json()
+const stripeService = require('./services/stripe');
+app.post('/api/stripe/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  const sig = req.headers['stripe-signature'];
+  try {
+    if (!stripeService.isConfigured()) {
+      logger.warn('Stripe webhook received but Stripe is not configured');
+      return res.status(200).json({ received: true });
+    }
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const event = stripe.webhooks.constructEvent(req.body, sig, process.env.STRIPE_WEBHOOK_SECRET);
+    await stripeService.handleWebhook(event);
+    res.json({ received: true });
+  } catch (error) {
+    logger.error('Stripe webhook error:', error.message);
+    res.status(400).json({ error: 'Webhook error' });
+  }
+});
+
+// Body parsing (after Stripe webhook)
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

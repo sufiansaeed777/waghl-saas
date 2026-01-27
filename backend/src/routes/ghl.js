@@ -11,6 +11,20 @@ const logger = require('../utils/logger');
 const DRIP_MODE_ENABLED = process.env.DRIP_MODE_ENABLED !== 'false'; // Default: true
 const DRIP_DELAY_MS = parseInt(process.env.DRIP_DELAY_MS) || 1000; // Default: 1 second between messages
 
+// Simple auth initiation for testing (redirects to GHL OAuth)
+router.get('/auth', async (req, res) => {
+  try {
+    // Generate auth URL (customerId is optional, will auto-create on callback)
+    const customerId = req.query.customerId || 'marketplace';
+    const authUrl = ghlService.getAuthorizationUrl(customerId, null);
+    logger.info('Redirecting to GHL OAuth:', authUrl);
+    res.redirect(authUrl);
+  } catch (error) {
+    logger.error('GHL auth redirect error:', error);
+    res.status(500).json({ error: 'Failed to start GHL OAuth' });
+  }
+});
+
 // Get GHL authorization URL for a sub-account
 router.get('/auth-url/:subAccountId', authenticateJWT, async (req, res) => {
   try {
