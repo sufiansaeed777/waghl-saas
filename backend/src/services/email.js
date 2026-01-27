@@ -20,9 +20,18 @@ function initTransporter() {
 
   // Support different email providers
   if (process.env.MAILGUN_API_KEY && process.env.MAILGUN_DOMAIN) {
-    // Mailgun API (preferred - uses API key directly)
-    emailProvider = 'mailgun-api';
-    logger.info('Email provider: Mailgun API');
+    // Mailgun SMTP
+    emailProvider = 'smtp';
+    transporter = nodemailer.createTransport({
+      host: 'smtp.mailgun.org',
+      port: 587,
+      secure: false,
+      auth: {
+        user: `postmaster@${process.env.MAILGUN_DOMAIN}`,
+        pass: process.env.MAILGUN_API_KEY
+      }
+    });
+    logger.info('Email provider: Mailgun SMTP');
   } else if (process.env.SENDGRID_API_KEY) {
     // SendGrid via SMTP
     emailProvider = 'smtp';
