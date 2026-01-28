@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Users, Smartphone, MessageSquare, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Phone, MapPin, Crown, Gift, Search, Filter } from 'lucide-react'
+import { Users, Smartphone, MessageSquare, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Phone, MapPin, Crown, Gift, Search, Filter, Trash2 } from 'lucide-react'
+import { useAuth } from '../contexts/AuthContext'
 
 export default function AdminDashboard() {
+  const { user } = useAuth()
   const [stats, setStats] = useState(null)
   const [customers, setCustomers] = useState([])
   const [subAccounts, setSubAccounts] = useState([])
@@ -59,6 +61,12 @@ export default function AdminDashboard() {
   }
 
   const grantFreeAccess = async (customerId, currentAccess) => {
+    // Prevent admin from gifting itself
+    if (customerId === user?.id) {
+      toast.error('Cannot modify your own access')
+      return
+    }
+
     const action = currentAccess ? 'revoke' : 'grant'
     if (!confirm(`Are you sure you want to ${action} free unlimited access for this customer?`)) return
 
@@ -70,7 +78,52 @@ export default function AdminDashboard() {
       toast.success(`Free access ${action}ed successfully`)
       fetchData()
     } catch (error) {
-      toast.error(`Failed to ${action} free access`)
+      toast.error(error.response?.data?.error || `Failed to ${action} free access`)
+    }
+  }
+
+  const deleteCustomer = async (customerId, customerName) => {
+    // Prevent admin from deleting itself
+    if (customerId === user?.id) {
+      toast.error('Cannot delete your own account')
+      return
+    }
+
+    if (!confirm(`Are you sure you want to delete "${customerName}" and ALL their sub-accounts? This cannot be undone.`)) return
+
+    try {
+      await api.delete(`/admin/customers/${customerId}`)
+      toast.success('Customer and sub-accounts deleted')
+      fetchData()
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to delete customer')
+    }
+  }
+
+  const deleteSubAccount = async (subAccountId, subAccountName) => {
+    if (!confirm(`Are you sure you want to delete "${subAccountName}"? This cannot be undone.`)) return
+
+    try {
+      await api.delete(`/admin/sub-accounts/${subAccountId}`)
+      toast.success('Sub-account deleted')
+      fetchData()
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to delete sub-account')
+    }
+  }
+
+  const giftSubAccount = async (subAccountId, currentPaid) => {
+    const action = currentPaid ? 'revoke' : 'grant'
+    if (!confirm(`Are you sure you want to ${action} paid status for this sub-account?`)) return
+
+    try {
+      await api.put(`/admin/sub-accounts/${subAccountId}/payment`, {
+        isPaid: !currentPaid
+      })
+      toast.success(`Sub-account ${!currentPaid ? 'marked as paid' : 'marked as unpaid'}`)
+      fetchData()
+    } catch (error) {
+      toast.error(error.response?.data?.error || `Failed to ${action} paid status`)
     }
   }
 
@@ -404,17 +457,20 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-6 py-4 text-right">
                           <div className="flex items-center justify-end gap-2">
-                            <button
-                              onClick={() => grantFreeAccess(customer.id, customer.hasUnlimitedAccess)}
-                              className={`p-2 rounded ${
-                                customer.hasUnlimitedAccess
-                                  ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
-                                  : 'hover:bg-gray-100 text-gray-500'
-                              }`}
-                              title={customer.hasUnlimitedAccess ? 'Revoke free access' : 'Grant free access'}
-                            >
-                              <Gift size={20} />
-                            </button>
+                            {/* Gift button - hidden for admin's own account */}
+                            {customer.id !== user?.id && (
+                              <button
+                                onClick={() => grantFreeAccess(customer.id, customer.hasUnlimitedAccess)}
+                                className={`p-2 rounded ${
+                                  customer.hasUnlimitedAccess
+                                    ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
+                                    : 'hover:bg-gray-100 text-gray-500'
+                                }`}
+                                title={customer.hasUnlimitedAccess ? 'Revoke free access' : 'Grant free access'}
+                              >
+                                <Gift size={20} />
+                              </button>
+                            )}
                             <button
                               onClick={() => toggleCustomer(customer.id)}
                               className="p-2 hover:bg-gray-100 rounded"
@@ -425,6 +481,16 @@ export default function AdminDashboard() {
                                 <ToggleLeft className="text-gray-400" size={24} />
                               )}
                             </button>
+                            {/* Delete button - hidden for admin's own account */}
+                            {customer.id !== user?.id && (
+                              <button
+                                onClick={() => deleteCustomer(customer.id, customer.name)}
+                                className="p-2 hover:bg-red-100 text-gray-500 hover:text-red-500 rounded"
+                                title="Delete customer"
+                              >
+                                <Trash2 size={20} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -459,6 +525,22 @@ export default function AdminDashboard() {
                                   }`}>
                                     {subAccount.status}
                                   </span>
+                                  <span className={`text-xs px-2 py-1 rounded ${
+                                    subAccount.isPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                                  }`}>
+                                    {subAccount.isPaid ? 'Paid' : 'Unpaid'}
+                                  </span>
+                                  <button
+                                    onClick={() => giftSubAccount(subAccount.id, subAccount.isPaid)}
+                                    className={`p-1 rounded ${
+                                      subAccount.isPaid
+                                        ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
+                                        : 'hover:bg-gray-100 text-gray-500'
+                                    }`}
+                                    title={subAccount.isPaid ? 'Revoke paid status' : 'Grant paid status'}
+                                  >
+                                    <Gift size={16} />
+                                  </button>
                                   <button
                                     onClick={() => toggleSubAccount(subAccount.id)}
                                     className="p-1 hover:bg-gray-100 rounded"
@@ -468,6 +550,13 @@ export default function AdminDashboard() {
                                     ) : (
                                       <ToggleLeft className="text-gray-400" size={20} />
                                     )}
+                                  </button>
+                                  <button
+                                    onClick={() => deleteSubAccount(subAccount.id, subAccount.name)}
+                                    className="p-1 hover:bg-red-100 text-gray-500 hover:text-red-500 rounded"
+                                    title="Delete sub-account"
+                                  >
+                                    <Trash2 size={16} />
                                   </button>
                                 </div>
                               </div>
@@ -510,25 +599,52 @@ export default function AdminDashboard() {
                   <td className="px-6 py-4 text-gray-600">{account.phoneNumber || '-'}</td>
                   <td className="px-6 py-4 text-gray-600 font-mono text-sm">{account.ghlLocationId || '-'}</td>
                   <td className="px-6 py-4">
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      account.status === 'connected' ? 'bg-green-100 text-green-700' :
-                      account.status === 'qr_ready' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {account.status}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        account.status === 'connected' ? 'bg-green-100 text-green-700' :
+                        account.status === 'qr_ready' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {account.status}
+                      </span>
+                      <span className={`text-xs px-2 py-1 rounded ${
+                        account.isPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {account.isPaid ? 'Paid' : 'Unpaid'}
+                      </span>
+                    </div>
                   </td>
                   <td className="px-6 py-4 text-right">
-                    <button
-                      onClick={() => toggleSubAccount(account.id)}
-                      className="p-2 hover:bg-gray-100 rounded"
-                    >
-                      {account.isActive ? (
-                        <ToggleRight className="text-green-500" size={24} />
-                      ) : (
-                        <ToggleLeft className="text-gray-400" size={24} />
-                      )}
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button
+                        onClick={() => giftSubAccount(account.id, account.isPaid)}
+                        className={`p-2 rounded ${
+                          account.isPaid
+                            ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
+                            : 'hover:bg-gray-100 text-gray-500'
+                        }`}
+                        title={account.isPaid ? 'Revoke paid status' : 'Grant paid status'}
+                      >
+                        <Gift size={20} />
+                      </button>
+                      <button
+                        onClick={() => toggleSubAccount(account.id)}
+                        className="p-2 hover:bg-gray-100 rounded"
+                      >
+                        {account.isActive ? (
+                          <ToggleRight className="text-green-500" size={24} />
+                        ) : (
+                          <ToggleLeft className="text-gray-400" size={24} />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => deleteSubAccount(account.id, account.name)}
+                        className="p-2 hover:bg-red-100 text-gray-500 hover:text-red-500 rounded"
+                        title="Delete sub-account"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

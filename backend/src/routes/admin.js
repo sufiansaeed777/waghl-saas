@@ -129,11 +129,79 @@ router.put('/sub-accounts/:id/toggle', async (req, res) => {
   }
 });
 
-// Grant/revoke unlimited access for a customer
+// Delete customer (admin cannot delete itself)
+router.delete('/customers/:id', async (req, res) => {
+  try {
+    const customerId = req.params.id;
+
+    // Prevent admin from deleting itself
+    if (customerId === req.customer.id) {
+      return res.status(403).json({ error: 'Cannot delete your own account' });
+    }
+
+    const customer = await Customer.findByPk(customerId);
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+
+    // Disconnect all WhatsApp sessions for this customer's sub-accounts
+    const subAccounts = await SubAccount.findAll({ where: { customerId } });
+    for (const subAccount of subAccounts) {
+      await whatsappService.disconnect(subAccount.id);
+    }
+
+    // Delete all sub-accounts first (due to foreign key)
+    await SubAccount.destroy({ where: { customerId } });
+
+    // Delete the customer
+    await customer.destroy();
+
+    logger.info(`Admin deleted customer ${customerId} and ${subAccounts.length} sub-accounts`);
+
+    res.json({
+      message: 'Customer and all sub-accounts deleted',
+      deletedSubAccounts: subAccounts.length
+    });
+  } catch (error) {
+    logger.error('Admin delete customer error:', error);
+    res.status(500).json({ error: 'Failed to delete customer' });
+  }
+});
+
+// Delete sub-account
+router.delete('/sub-accounts/:id', async (req, res) => {
+  try {
+    const subAccount = await SubAccount.findByPk(req.params.id);
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // Disconnect WhatsApp if connected
+    await whatsappService.disconnect(subAccount.id);
+
+    await subAccount.destroy();
+
+    logger.info(`Admin deleted sub-account ${req.params.id}`);
+
+    res.json({ message: 'Sub-account deleted' });
+  } catch (error) {
+    logger.error('Admin delete sub-account error:', error);
+    res.status(500).json({ error: 'Failed to delete sub-account' });
+  }
+});
+
+// Grant/revoke unlimited access for a customer (admin cannot gift itself)
 router.put('/customers/:id/access', async (req, res) => {
   try {
     const { hasUnlimitedAccess, planType } = req.body;
-    const customer = await Customer.findByPk(req.params.id);
+    const customerId = req.params.id;
+
+    // Prevent admin from gifting itself
+    if (customerId === req.customer.id) {
+      return res.status(403).json({ error: 'Cannot modify your own access' });
+    }
+
+    const customer = await Customer.findByPk(customerId);
 
     if (!customer) {
       return res.status(404).json({ error: 'Customer not found' });
