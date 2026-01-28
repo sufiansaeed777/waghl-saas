@@ -57,48 +57,16 @@ router.get('/token-by-location/:locationId', async (req, res) => {
     }
 
     // Find sub-account by GHL location ID - STRICT match only
-    let subAccount = await SubAccount.findOne({
+    const subAccount = await SubAccount.findOne({
       where: { ghlLocationId: locationId, isActive: true }
     });
 
-    // Auto-create SubAccount for existing GHL installs that don't have one yet
+    // SECURITY: Do NOT auto-create sub-accounts. User must install via OAuth first.
     if (!subAccount) {
-      logger.info('No SubAccount found for locationId, auto-creating', { locationId });
-
-      // Find or create a customer for this GHL location
-      let customer = await Customer.findOne({ where: { role: 'admin' } });
-
-      if (!customer) {
-        // Create a marketplace customer if no admin exists
-        customer = await Customer.create({
-          email: `ghl-${locationId}@marketplace.local`,
-          password: crypto.randomBytes(32).toString('hex'),
-          name: 'GHL Marketplace User',
-          company: 'GHL Location ' + locationId,
-          apiKey: crypto.randomBytes(32).toString('hex'),
-          role: 'customer',
-          subscriptionStatus: 'active',
-          planType: 'standard',
-          isActive: true
-        });
-        logger.info('Created marketplace customer', { customerId: customer.id });
-      }
-
-      // Create SubAccount for this location
-      subAccount = await SubAccount.create({
-        customerId: customer.id,
-        name: `GHL Location ${locationId.substring(0, 8)}`,
-        apiKey: crypto.randomBytes(32).toString('hex'),
-        status: 'disconnected',
-        isActive: true,
-        isPaid: true,
-        ghlLocationId: locationId,
-        ghlConnected: true
-      });
-
-      logger.info('Auto-created SubAccount for existing GHL install', {
-        subAccountId: subAccount.id,
-        customerId: customer.id,
+      logger.warn('No SubAccount found for locationId - user must install via GHL OAuth first', { locationId });
+      return res.status(404).json({
+        error: 'Location not configured',
+        message: 'This location has not been set up yet. Please install the app from the GHL Marketplace first.',
         locationId
       });
     }
