@@ -2,9 +2,11 @@ import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
+import { CreditCard, ExternalLink } from 'lucide-react'
 
 export default function Settings() {
   const { user, fetchUser } = useAuth()
+  const isAdmin = user?.role === 'admin' || user?.hasUnlimitedAccess
   const [profile, setProfile] = useState({
     name: user?.name || '',
     company: user?.company || ''
@@ -15,6 +17,24 @@ export default function Settings() {
   })
   const [saving, setSaving] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
+
+  const openBillingPortal = async () => {
+    try {
+      const { data } = await api.get('/billing/portal')
+      window.open(data.url, '_blank')
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to open billing portal')
+    }
+  }
+
+  const handleSubscribe = async () => {
+    try {
+      const { data } = await api.post('/billing/subscribe')
+      window.location.href = data.url
+    } catch (error) {
+      toast.error('Failed to start subscription checkout')
+    }
+  }
 
   const updateProfile = async (e) => {
     e.preventDefault()
@@ -52,6 +72,45 @@ export default function Settings() {
         <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
         <p className="text-gray-600 mt-1">Manage your account settings</p>
       </div>
+
+      {/* Billing Section - only for regular users */}
+      {!isAdmin && (
+        <div className="bg-white rounded-lg shadow p-6 mb-6">
+          <h2 className="text-lg font-semibold mb-4">Subscription & Billing</h2>
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-gray-600">
+                {user?.subscriptionStatus === 'active' ? (
+                  <span className="text-green-600 font-medium">Your subscription is active</span>
+                ) : (
+                  <span className="text-gray-500">No active subscription</span>
+                )}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Manage your subscription, payment methods, and invoices
+              </p>
+            </div>
+            {user?.subscriptionStatus === 'active' ? (
+              <button
+                onClick={openBillingPortal}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+              >
+                <CreditCard size={18} />
+                Manage Billing
+                <ExternalLink size={14} />
+              </button>
+            ) : (
+              <button
+                onClick={handleSubscribe}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+              >
+                <CreditCard size={18} />
+                Subscribe Now
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Profile Settings */}

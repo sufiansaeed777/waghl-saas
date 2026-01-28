@@ -2,8 +2,7 @@ import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
-import toast from 'react-hot-toast'
-import { Smartphone, Wifi, WifiOff, Plus, CreditCard, ExternalLink } from 'lucide-react'
+import { Smartphone, Wifi, WifiOff, Plus, CreditCard } from 'lucide-react'
 
 export default function Dashboard() {
   const { user } = useAuth()
@@ -28,24 +27,6 @@ export default function Dashboard() {
 
   const connectedCount = subAccounts.filter(s => s.status === 'connected').length
   const paidCount = subAccounts.filter(s => s.isPaid).length
-
-  const openBillingPortal = async () => {
-    try {
-      const { data } = await api.get('/billing/portal')
-      window.open(data.url, '_blank')
-    } catch (error) {
-      toast.error('Failed to open billing portal')
-    }
-  }
-
-  const handleSubscribe = async () => {
-    try {
-      const { data } = await api.post('/billing/subscribe')
-      window.location.href = data.url
-    } catch (error) {
-      toast.error('Failed to start subscription checkout')
-    }
-  }
 
   return (
     <div>
@@ -106,42 +87,6 @@ export default function Dashboard() {
           </div>
         )}
       </div>
-
-      {/* Subscription Status - only for regular users */}
-      {!isAdmin && (
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-lg font-semibold">Subscription Status</h2>
-              <p className="text-gray-600 mt-1">
-                {user?.subscriptionStatus === 'active' ? (
-                  <span className="text-green-600">Your subscription is active</span>
-                ) : (
-                  <span className="text-gray-500">No active subscription</span>
-                )}
-              </p>
-            </div>
-            {user?.subscriptionStatus === 'active' ? (
-              <button
-                onClick={openBillingPortal}
-                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-              >
-                <CreditCard size={18} />
-                Manage Billing
-                <ExternalLink size={14} />
-              </button>
-            ) : (
-              <button
-                onClick={handleSubscribe}
-                className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
-              >
-                <CreditCard size={18} />
-                Subscribe Now
-              </button>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Quick Actions */}
       <div className="bg-white rounded-lg shadow p-6 mb-8">
