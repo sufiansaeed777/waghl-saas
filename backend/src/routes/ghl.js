@@ -104,11 +104,28 @@ router.get('/callback', async (req, res) => {
 
     // Strategy 1: Try to find SubAccount by state (dashboard-initiated OAuth)
     if (stateValid && subAccountId) {
-      subAccount = await SubAccount.findOne({
+      const foundSubAccount = await SubAccount.findOne({
         where: { id: subAccountId, customerId }
       });
-      if (subAccount) {
-        logger.info('Found SubAccount by state', { subAccountId });
+      if (foundSubAccount) {
+        logger.info('Found SubAccount by state', { subAccountId, configuredLocationId: foundSubAccount.ghlLocationId, incomingLocationId: locationId });
+
+        // SECURITY: Sub-account MUST have a ghlLocationId pre-configured
+        if (!foundSubAccount.ghlLocationId) {
+          logger.warn('SubAccount has no ghlLocationId configured - cannot connect to any GHL location', { subAccountId });
+          // Don't set subAccount - will trigger error below
+        } else if (foundSubAccount.ghlLocationId !== locationId) {
+          // LocationId is configured but doesn't match incoming
+          logger.warn('SubAccount ghlLocationId mismatch', {
+            subAccountId,
+            configured: foundSubAccount.ghlLocationId,
+            incoming: locationId
+          });
+          // Don't set subAccount - will trigger error below
+        } else {
+          // LocationId matches - allow connection
+          subAccount = foundSubAccount;
+        }
       }
     }
 
