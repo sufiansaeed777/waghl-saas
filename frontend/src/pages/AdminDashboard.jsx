@@ -525,22 +525,21 @@ export default function AdminDashboard() {
                                   }`}>
                                     {subAccount.status}
                                   </span>
-                                  <span className={`text-xs px-2 py-1 rounded ${
-                                    subAccount.isPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                                  }`}>
-                                    {subAccount.isPaid ? 'Paid' : 'Unpaid'}
-                                  </span>
-                                  <button
-                                    onClick={() => giftSubAccount(subAccount.id, subAccount.isPaid)}
-                                    className={`p-1 rounded ${
-                                      subAccount.isPaid
-                                        ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
-                                        : 'hover:bg-gray-100 text-gray-500'
-                                    }`}
-                                    title={subAccount.isPaid ? 'Revoke paid status' : 'Grant paid status'}
-                                  >
-                                    <Gift size={16} />
-                                  </button>
+                                  {subAccount.isPaid ? (
+                                    <button
+                                      onClick={() => giftSubAccount(subAccount.id, subAccount.isPaid)}
+                                      className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                                    >
+                                      Cancel Sub
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => giftSubAccount(subAccount.id, subAccount.isPaid)}
+                                      className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200"
+                                    >
+                                      Resume Sub
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => toggleSubAccount(subAccount.id)}
                                     className="p-1 hover:bg-gray-100 rounded"
@@ -607,26 +606,25 @@ export default function AdminDashboard() {
                       }`}>
                         {account.status}
                       </span>
-                      <span className={`text-xs px-2 py-1 rounded ${
-                        account.isPaid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                      }`}>
-                        {account.isPaid ? 'Paid' : 'Unpaid'}
-                      </span>
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <button
-                        onClick={() => giftSubAccount(account.id, account.isPaid)}
-                        className={`p-2 rounded ${
-                          account.isPaid
-                            ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200'
-                            : 'hover:bg-gray-100 text-gray-500'
-                        }`}
-                        title={account.isPaid ? 'Revoke paid status' : 'Grant paid status'}
-                      >
-                        <Gift size={20} />
-                      </button>
+                      {account.isPaid ? (
+                        <button
+                          onClick={() => giftSubAccount(account.id, account.isPaid)}
+                          className="text-xs px-3 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
+                        >
+                          Cancel Sub
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => giftSubAccount(account.id, account.isPaid)}
+                          className="text-xs px-3 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200"
+                        >
+                          Resume Sub
+                        </button>
+                      )}
                       <button
                         onClick={() => toggleSubAccount(account.id)}
                         className="p-2 hover:bg-gray-100 rounded"
