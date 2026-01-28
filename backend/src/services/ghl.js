@@ -398,6 +398,8 @@ class GHLService {
   }
 
   // Uninstall app from GHL location using Marketplace API
+  // API: DELETE /marketplace/app/:appId/installations
+  // Docs: https://marketplace.gohighlevel.com/docs/ghl/marketplace/uninstall-application/index.html
   async uninstallFromLocation(subAccount) {
     try {
       if (!subAccount.ghlAccessToken || !subAccount.ghlLocationId) {
@@ -411,13 +413,16 @@ class GHLService {
 
       const accessToken = await this.getValidAccessToken(subAccount);
       const appId = this.clientId.split('-')[0]; // Get base app ID without suffix
+      const locationId = subAccount.ghlLocationId;
 
       logger.info('Calling GHL uninstall API', {
         subAccountId: subAccount.id,
-        locationId: subAccount.ghlLocationId,
-        appId
+        locationId,
+        appId,
+        url: `${GHL_API_BASE}/marketplace/app/${appId}/installations`
       });
 
+      // Try with locationId in request body first (as per webhook structure)
       const response = await axios({
         method: 'DELETE',
         url: `${GHL_API_BASE}/marketplace/app/${appId}/installations`,
@@ -426,14 +431,14 @@ class GHLService {
           'Content-Type': 'application/json',
           'Version': '2021-07-28'
         },
-        params: {
-          locationId: subAccount.ghlLocationId
+        data: {
+          locationId: locationId
         }
       });
 
       logger.info('GHL uninstall API success', {
         subAccountId: subAccount.id,
-        locationId: subAccount.ghlLocationId,
+        locationId,
         response: response.data
       });
 
@@ -451,11 +456,15 @@ class GHLService {
       logger.error('GHL uninstall API error:', {
         subAccountId: subAccount.id,
         error: error.response?.data || error.message,
-        status: error.response?.status
+        status: error.response?.status,
+        statusText: error.response?.statusText
       });
+
+      // If the API fails, still return the error but don't clear local data
+      // Let the caller decide whether to clear local data
       return {
         success: false,
-        error: error.response?.data?.message || error.message,
+        error: error.response?.data?.message || error.response?.data || error.message,
         status: error.response?.status
       };
     }
