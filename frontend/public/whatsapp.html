@@ -518,9 +518,12 @@
     }
 
     // Fetch available locations for picker
+    // If locationId is provided, only fetch that specific location (security)
     async function fetchLocations() {
       try {
-        const res = await fetch(apiBase + '/api/embed/locations');
+        // Include locationId filter if available - ensures only accessible locations are shown
+        const locUrl = apiBase + '/api/embed/locations' + (locationId ? '?locationId=' + locationId : '');
+        const res = await fetch(locUrl);
         if (res.ok) {
           const data = await res.json();
           return data.locations || [];
@@ -742,9 +745,12 @@
 
     async function loadStatus() {
       try {
-        const res = await fetch(apiBase + '/api/embed/status/' + token);
+        // Include locationId in query for security validation
+        const statusUrl = apiBase + '/api/embed/status/' + token + (locationId ? '?locationId=' + locationId : '');
+        const res = await fetch(statusUrl);
         if (!res.ok) {
-          throw new Error('Invalid token');
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Invalid token');
         }
         const data = await res.json();
         renderStatus(data);
@@ -843,7 +849,12 @@
       btn.innerHTML = '<div class="spinner"></div> Connecting...';
 
       try {
-        const res = await fetch(apiBase + '/api/embed/connect/' + token, { method: 'POST' });
+        // Include locationId in body for security validation
+        const res = await fetch(apiBase + '/api/embed/connect/' + token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locationId: locationId })
+        });
         const data = await res.json();
 
         if (res.ok) {
@@ -864,11 +875,17 @@
       if (!confirm('Are you sure you want to disconnect WhatsApp?')) return;
 
       try {
-        const res = await fetch(apiBase + '/api/embed/disconnect/' + token, { method: 'POST' });
+        // Include locationId in body for security validation
+        const res = await fetch(apiBase + '/api/embed/disconnect/' + token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locationId: locationId })
+        });
         if (res.ok) {
           location.reload();
         } else {
-          alert('Failed to disconnect');
+          const data = await res.json().catch(() => ({}));
+          alert(data.error || 'Failed to disconnect');
         }
       } catch (err) {
         alert('Disconnect failed');
@@ -878,7 +895,9 @@
     async function pollStatus() {
       try {
         console.log('Polling status...');
-        const res = await fetch(apiBase + '/api/embed/status/' + token);
+        // Include locationId in query for security validation
+        const statusUrl = apiBase + '/api/embed/status/' + token + (locationId ? '?locationId=' + locationId : '');
+        const res = await fetch(statusUrl);
         const data = await res.json();
         console.log('Status response:', data.status, 'hasQR:', data.hasQR, 'qrCode length:', data.qrCode ? data.qrCode.length : 0);
 

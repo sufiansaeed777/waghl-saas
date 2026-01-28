@@ -41,6 +41,7 @@ function setToken(subAccountId, token) {
 }
 
 // Get token by GHL location ID (for custom page integration)
+// SECURITY: This endpoint strictly returns token ONLY for the requested locationId
 router.get('/token-by-location/:locationId', async (req, res) => {
   try {
     const { locationId } = req.params;
@@ -55,9 +56,9 @@ router.get('/token-by-location/:locationId', async (req, res) => {
       return res.status(400).json({ error: 'Invalid location ID. GHL template variable was not resolved.' });
     }
 
-    // Find sub-account by GHL location ID
+    // Find sub-account by GHL location ID - STRICT match only
     let subAccount = await SubAccount.findOne({
-      where: { ghlLocationId: locationId }
+      where: { ghlLocationId: locationId, isActive: true }
     });
 
     // Auto-create SubAccount for existing GHL installs that don't have one yet
@@ -432,13 +433,24 @@ router.get('/qr-image/:token', async (req, res) => {
 });
 
 // API endpoint to get status (for AJAX refresh)
+// Includes locationId validation for GHL embed security
 router.get('/status/:token', async (req, res) => {
   try {
     const { token } = req.params;
+    const { locationId } = req.query; // Optional: verify locationId matches
 
     const subAccountId = await verifyTokenWithFallback(token);
     if (!subAccountId) {
       return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Get sub-account to verify locationId if provided
+    if (locationId) {
+      const subAccount = await SubAccount.findByPk(subAccountId);
+      if (subAccount && subAccount.ghlLocationId !== locationId) {
+        logger.warn(`Status: Location ID mismatch for token`);
+        return res.status(403).json({ error: 'Location ID mismatch' });
+      }
     }
 
     const status = await whatsappService.getStatus(subAccountId);
@@ -450,9 +462,11 @@ router.get('/status/:token', async (req, res) => {
 });
 
 // Connect WhatsApp (for embed page)
+// SECURITY: Validates that sub-account has a GHL location ID when connecting via embed
 router.post('/connect/:token', async (req, res) => {
   try {
     const { token } = req.params;
+    const { locationId } = req.body; // Optional: verify locationId matches
 
     const subAccountId = await verifyTokenWithFallback(token);
     if (!subAccountId) {
@@ -462,6 +476,20 @@ router.post('/connect/:token', async (req, res) => {
     const subAccount = await SubAccount.findByPk(subAccountId);
     if (!subAccount) {
       return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // SECURITY: Sub-account must have a GHL location ID to connect via embed
+    if (!subAccount.ghlLocationId) {
+      logger.warn(`Attempted to connect sub-account ${subAccountId} without ghlLocationId`);
+      return res.status(403).json({
+        error: 'This sub-account is not linked to a GHL location. Please connect via GHL Marketplace first.'
+      });
+    }
+
+    // SECURITY: If locationId provided, verify it matches the sub-account's locationId
+    if (locationId && locationId !== subAccount.ghlLocationId) {
+      logger.warn(`Location ID mismatch: requested ${locationId}, sub-account has ${subAccount.ghlLocationId}`);
+      return res.status(403).json({ error: 'Location ID mismatch' });
     }
 
     // Check if paid
@@ -478,13 +506,24 @@ router.post('/connect/:token', async (req, res) => {
 });
 
 // Disconnect WhatsApp (for embed page)
+// SECURITY: Validates locationId if provided
 router.post('/disconnect/:token', async (req, res) => {
   try {
     const { token } = req.params;
+    const { locationId } = req.body; // Optional: verify locationId matches
 
     const subAccountId = await verifyTokenWithFallback(token);
     if (!subAccountId) {
       return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    // Verify locationId if provided
+    if (locationId) {
+      const subAccount = await SubAccount.findByPk(subAccountId);
+      if (subAccount && subAccount.ghlLocationId !== locationId) {
+        logger.warn(`Disconnect: Location ID mismatch for token`);
+        return res.status(403).json({ error: 'Location ID mismatch' });
+      }
     }
 
     const result = await whatsappService.disconnect(subAccountId);
@@ -901,30 +940,45 @@ function renderErrorPage(message) {
   `;
 }
 
-// Get all GHL locations with app installed (for location picker)
+// Get GHL locations with app installed (for location picker)
+// SECURITY: If locationId query param is provided, only return that specific location
+// This ensures users can only access their own location from GHL
 router.get('/locations', async (req, res) => {
   try {
-    // Find all sub-accounts that have GHL connected
+    const { locationId } = req.query;
+
+    // Build query - only return sub-accounts with valid ghlLocationId
+    const where = {
+      ghlLocationId: { [require('sequelize').Op.and]: [
+        { [require('sequelize').Op.ne]: null },
+        { [require('sequelize').Op.ne]: '' }
+      ]},
+      isActive: true
+    };
+
+    // SECURITY: If locationId provided, filter to only that location
+    if (locationId && locationId !== '{{location.id}}' && !locationId.includes('location.id')) {
+      where.ghlLocationId = locationId;
+    }
+
     const subAccounts = await SubAccount.findAll({
-      where: {
-        ghlLocationId: { [require('sequelize').Op.ne]: null },
-        ghlConnected: true,
-        isActive: true
-      },
-      attributes: ['id', 'name', 'ghlLocationId'],
+      where,
+      attributes: ['id', 'name', 'ghlLocationId', 'ghlConnected'],
       order: [['name', 'ASC']]
     });
 
     const locations = subAccounts.map(sa => ({
       id: sa.ghlLocationId,
       name: sa.name || `Location ${sa.ghlLocationId.substring(0, 8)}`,
-      subAccountId: sa.id
+      subAccountId: sa.id,
+      ghlConnected: sa.ghlConnected || false
     }));
 
     res.json({
       success: true,
       locations,
-      count: locations.length
+      count: locations.length,
+      filtered: !!locationId
     });
   } catch (error) {
     logger.error('Get locations error:', error);
