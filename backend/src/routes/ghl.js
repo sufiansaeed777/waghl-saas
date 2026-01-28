@@ -181,11 +181,12 @@ router.get('/callback', async (req, res) => {
 
             if (window.opener) {
               window.opener.postMessage(result, '*');
-              setTimeout(() => window.close(), 500);
-            } else {
-              // Fallback: show error if no opener
-              document.body.innerHTML = '<div class="box"><h1 style="color:#ef4444">Location Not Configured</h1><p>This GHL location is not set up yet.</p><p>Location ID: ${locationId || 'Unknown'}</p><p>Please close this window and contact your administrator.</p></div>';
+              try { window.close(); } catch(e) {}
             }
+            // Always show error message after short delay
+            setTimeout(() => {
+              document.body.innerHTML = '<div class="box"><h1 style="color:#ef4444">Location Not Configured</h1><p>This GHL location is not set up yet.</p><p>Location ID: ${locationId || 'Unknown'}</p><p>Please contact your service provider to activate this location.</p><button onclick="window.close()" style="margin-top:20px;padding:10px 20px;background:#ef4444;color:white;border:none;border-radius:8px;cursor:pointer;">Close Window</button></div>';
+            }, 500);
           </script>
         </body>
         </html>
@@ -266,11 +267,12 @@ router.get('/callback', async (req, res) => {
 
             if (window.opener) {
               window.opener.postMessage(result, '*');
-              setTimeout(() => window.close(), 500);
-            } else {
-              // Fallback: redirect to WhatsApp page if no opener
-              window.location.href = "${whatsappPageUrl}";
+              try { window.close(); } catch(e) {}
             }
+            // Always redirect after short delay (whether popup closes or not)
+            setTimeout(() => {
+              window.location.href = "${whatsappPageUrl}";
+            }, 1000);
           </script>
         </body>
         </html>
