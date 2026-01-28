@@ -122,60 +122,41 @@ router.get('/callback', async (req, res) => {
       }
     }
 
-    // Strategy 3: Auto-create for GHL Marketplace installs (no existing SubAccount)
+    // Strategy 3: DISABLED - No auto-creation allowed
+    // Sub-accounts must be pre-created with matching ghlLocationId
+    // This ensures only authorized locations can connect
     if (!subAccount && locationId) {
-      logger.info('No SubAccount found, auto-creating for marketplace install', { locationId });
-
-      // Find or create a customer for this GHL location
-      // Use a default/admin customer or create one based on locationId
-      let customer = null;
-
-      // First, try to find admin customer
-      customer = await Customer.findOne({ where: { role: 'admin' } });
-
-      if (!customer) {
-        // Create a marketplace customer if no admin exists
-        const crypto = require('crypto');
-        customer = await Customer.create({
-          email: `ghl-${locationId}@marketplace.local`,
-          password: crypto.randomBytes(32).toString('hex'), // Random password (won't be used)
-          name: 'GHL Marketplace User',
-          company: 'GHL Location ' + locationId,
-          apiKey: crypto.randomBytes(32).toString('hex'),
-          role: 'customer',
-          subscriptionStatus: 'active', // Give them access
-          planType: 'standard',
-          isActive: true
-        });
-        logger.info('Created marketplace customer', { customerId: customer.id });
-      }
-
-      // Create SubAccount for this location
-      const crypto = require('crypto');
-      subAccount = await SubAccount.create({
-        customerId: customer.id,
-        name: `GHL Location ${locationId.substring(0, 8)}`,
-        apiKey: crypto.randomBytes(32).toString('hex'),
-        status: 'disconnected',
-        isActive: true,
-        isPaid: true, // Allow them to connect WhatsApp
-        ghlLocationId: locationId,
-        ghlConnected: true,
-        ghlAccessToken: tokenData.access_token,
-        ghlRefreshToken: tokenData.refresh_token,
-        ghlTokenExpiresAt: new Date(Date.now() + (tokenData.expires_in * 1000))
-      });
-
-      logger.info('Created SubAccount for marketplace install', {
-        subAccountId: subAccount.id,
-        customerId: customer.id,
-        locationId
-      });
+      logger.warn('No SubAccount found for GHL location - auto-creation disabled', { locationId });
+      // Don't auto-create - return error instead
     }
 
     if (!subAccount) {
-      logger.error('Could not find or create SubAccount', { locationId, stateValid });
-      return res.redirect(`${frontendUrl}/sub-accounts?ghl_error=subaccount_not_found`);
+      logger.error('No SubAccount found for this GHL location', { locationId, stateValid });
+      // Show user-friendly error page instead of redirect
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="UTF-8">
+          <title>Location Not Configured</title>
+          <style>
+            body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+            .box { background: white; padding: 40px; border-radius: 16px; text-align: center; max-width: 500px; }
+            h1 { color: #ef4444; margin-bottom: 16px; }
+            p { color: #666; line-height: 1.6; }
+            .location-id { background: #f3f4f6; padding: 8px 16px; border-radius: 8px; font-family: monospace; margin: 16px 0; }
+          </style>
+        </head>
+        <body>
+          <div class="box">
+            <h1>Location Not Configured</h1>
+            <p>This GHL location is not set up in our system yet.</p>
+            <div class="location-id">Location ID: ${locationId || 'Unknown'}</div>
+            <p>Please contact your administrator to configure this location before connecting WhatsApp.</p>
+          </div>
+        </body>
+        </html>
+      `);
     }
 
     // Update sub-account with GHL tokens (in case it already existed)
