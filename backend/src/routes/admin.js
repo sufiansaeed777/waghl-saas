@@ -269,26 +269,61 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-// Bulk uninstall GHL from all sub-accounts (clears ALL GHL data)
+const ghlService = require('../services/ghl');
+
+// Bulk uninstall GHL from all sub-accounts (calls GHL API + clears data)
 router.post('/ghl/bulk-uninstall', async (req, res) => {
   try {
-    const [updatedCount] = await SubAccount.update(
-      {
+    const { useApi = true } = req.body; // Set to false to skip GHL API calls
+
+    // Get all sub-accounts with GHL connected
+    const subAccounts = await SubAccount.findAll({
+      where: { ghlConnected: true }
+    });
+
+    const results = {
+      total: subAccounts.length,
+      apiSuccess: 0,
+      apiFailed: 0,
+      cleared: 0,
+      errors: []
+    };
+
+    for (const subAccount of subAccounts) {
+      // Try to call GHL uninstall API first
+      if (useApi && subAccount.ghlAccessToken && subAccount.ghlLocationId) {
+        const apiResult = await ghlService.uninstallFromLocation(subAccount);
+        if (apiResult.success) {
+          results.apiSuccess++;
+          results.cleared++;
+          continue; // Data already cleared by API method
+        } else {
+          results.apiFailed++;
+          results.errors.push({
+            subAccountId: subAccount.id,
+            locationId: subAccount.ghlLocationId,
+            error: apiResult.error
+          });
+        }
+      }
+
+      // Clear data even if API failed
+      await subAccount.update({
         ghlAccessToken: null,
         ghlRefreshToken: null,
         ghlTokenExpiresAt: null,
         ghlLocationId: null,
         ghlConnected: false
-      },
-      { where: {} }
-    );
+      });
+      results.cleared++;
+    }
 
-    logger.info(`Admin bulk GHL uninstall: cleared ${updatedCount} sub-accounts`);
+    logger.info('Admin bulk GHL uninstall complete', results);
 
     res.json({
       success: true,
-      message: `GHL data cleared from ${updatedCount} sub-accounts`,
-      updatedCount
+      message: `Processed ${results.total} sub-accounts`,
+      results
     });
   } catch (error) {
     logger.error('Admin bulk GHL uninstall error:', error);
@@ -296,10 +331,11 @@ router.post('/ghl/bulk-uninstall', async (req, res) => {
   }
 });
 
-// Uninstall GHL from specific sub-account (admin version - no ownership check)
+// Uninstall GHL from specific sub-account (calls GHL API + clears data)
 router.post('/ghl/uninstall/:subAccountId', async (req, res) => {
   try {
     const { subAccountId } = req.params;
+    const { useApi = true } = req.body;
 
     const subAccount = await SubAccount.findByPk(subAccountId);
 
@@ -308,7 +344,23 @@ router.post('/ghl/uninstall/:subAccountId', async (req, res) => {
     }
 
     const oldLocationId = subAccount.ghlLocationId;
+    let apiResult = null;
 
+    // Try to call GHL uninstall API first
+    if (useApi && subAccount.ghlAccessToken && subAccount.ghlLocationId) {
+      apiResult = await ghlService.uninstallFromLocation(subAccount);
+      if (apiResult.success) {
+        logger.info(`Admin GHL uninstall via API for sub-account ${subAccountId}`);
+        return res.json({
+          success: true,
+          message: 'GHL uninstalled via API',
+          previousLocationId: oldLocationId,
+          apiResult
+        });
+      }
+    }
+
+    // Clear data even if API failed or wasn't called
     await subAccount.update({
       ghlAccessToken: null,
       ghlRefreshToken: null,
@@ -321,8 +373,9 @@ router.post('/ghl/uninstall/:subAccountId', async (req, res) => {
 
     res.json({
       success: true,
-      message: 'GHL fully uninstalled',
-      previousLocationId: oldLocationId
+      message: apiResult ? 'GHL API failed but data cleared locally' : 'GHL data cleared locally',
+      previousLocationId: oldLocationId,
+      apiResult
     });
   } catch (error) {
     logger.error('Admin GHL uninstall error:', error);

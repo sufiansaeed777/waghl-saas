@@ -396,6 +396,70 @@ class GHLService {
       throw error;
     }
   }
+
+  // Uninstall app from GHL location using Marketplace API
+  async uninstallFromLocation(subAccount) {
+    try {
+      if (!subAccount.ghlAccessToken || !subAccount.ghlLocationId) {
+        logger.warn('Cannot uninstall: missing access token or locationId', {
+          subAccountId: subAccount.id,
+          hasToken: !!subAccount.ghlAccessToken,
+          hasLocationId: !!subAccount.ghlLocationId
+        });
+        return { success: false, error: 'Missing access token or locationId' };
+      }
+
+      const accessToken = await this.getValidAccessToken(subAccount);
+      const appId = this.clientId.split('-')[0]; // Get base app ID without suffix
+
+      logger.info('Calling GHL uninstall API', {
+        subAccountId: subAccount.id,
+        locationId: subAccount.ghlLocationId,
+        appId
+      });
+
+      const response = await axios({
+        method: 'DELETE',
+        url: `${GHL_API_BASE}/marketplace/app/${appId}/installations`,
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+          'Version': '2021-07-28'
+        },
+        params: {
+          locationId: subAccount.ghlLocationId
+        }
+      });
+
+      logger.info('GHL uninstall API success', {
+        subAccountId: subAccount.id,
+        locationId: subAccount.ghlLocationId,
+        response: response.data
+      });
+
+      // Clear GHL data from sub-account after successful uninstall
+      await subAccount.update({
+        ghlAccessToken: null,
+        ghlRefreshToken: null,
+        ghlTokenExpiresAt: null,
+        ghlLocationId: null,
+        ghlConnected: false
+      });
+
+      return { success: true, data: response.data };
+    } catch (error) {
+      logger.error('GHL uninstall API error:', {
+        subAccountId: subAccount.id,
+        error: error.response?.data || error.message,
+        status: error.response?.status
+      });
+      return {
+        success: false,
+        error: error.response?.data?.message || error.message,
+        status: error.response?.status
+      };
+    }
+  }
 }
 
 module.exports = new GHLService();
