@@ -30,6 +30,17 @@ router.post('/', authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: 'Name is required' });
     }
 
+    // Check if user is admin or has unlimited access
+    const isAdmin = req.customer.role === 'admin' || req.customer.hasUnlimitedAccess;
+
+    // Regular users must have active subscription to create sub-accounts
+    if (!isAdmin && req.customer.subscriptionStatus !== 'active') {
+      return res.status(402).json({
+        error: 'Subscription required',
+        message: 'Please subscribe to create sub-accounts'
+      });
+    }
+
     // Validate GHL Location ID if provided
     if (ghlLocationId) {
       // Format validation - GHL location IDs are alphanumeric, typically 20+ chars
@@ -53,11 +64,12 @@ router.post('/', authenticateJWT, async (req, res) => {
       }
     }
 
+    // Admins get free sub-accounts (isPaid = true), regular users depend on subscription
     const subAccount = await SubAccount.create({
       customerId: req.customer.id,
       name,
       ghlLocationId: ghlLocationId || null,
-      isPaid: req.customer.subscriptionStatus === 'active'
+      isPaid: isAdmin || req.customer.subscriptionStatus === 'active'
     });
 
     res.status(201).json({

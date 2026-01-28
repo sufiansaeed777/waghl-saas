@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Users, Smartphone, MessageSquare, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Phone, MapPin, Crown, Gift } from 'lucide-react'
+import { Users, Smartphone, MessageSquare, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Phone, MapPin, Crown, Gift, Search, Filter } from 'lucide-react'
 
 export default function AdminDashboard() {
   const [stats, setStats] = useState(null)
@@ -10,6 +10,12 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState('customers')
   const [expandedCustomers, setExpandedCustomers] = useState({})
+
+  // Search and filter states
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterPlan, setFilterPlan] = useState('all')
+  const [filterStatus, setFilterStatus] = useState('all')
+  const [filterCustomer, setFilterCustomer] = useState('all')
 
   useEffect(() => {
     fetchData()
@@ -79,6 +85,78 @@ export default function AdminDashboard() {
     return subAccounts.filter(sa => sa.customer?.id === customerId)
   }
 
+  // Filtered customers based on search and filters
+  const filteredCustomers = useMemo(() => {
+    return customers.filter(customer => {
+      // Search by name or email
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        if (!customer.name?.toLowerCase().includes(query) &&
+            !customer.email?.toLowerCase().includes(query)) {
+          return false
+        }
+      }
+
+      // Filter by plan
+      if (filterPlan !== 'all') {
+        if (filterPlan === 'free' && !customer.hasUnlimitedAccess) return false
+        if (filterPlan === 'standard' && (customer.hasUnlimitedAccess || customer.planType === 'volume')) return false
+        if (filterPlan === 'volume' && (customer.hasUnlimitedAccess || customer.planType !== 'volume')) return false
+      }
+
+      // Filter by status
+      if (filterStatus !== 'all') {
+        if (filterStatus === 'active' && !customer.isActive) return false
+        if (filterStatus === 'inactive' && customer.isActive) return false
+      }
+
+      return true
+    })
+  }, [customers, searchQuery, filterPlan, filterStatus])
+
+  // Filtered sub-accounts based on filters
+  const filteredSubAccounts = useMemo(() => {
+    return subAccounts.filter(account => {
+      // Search by: sub-account name, customer name, customer email, location ID, phone
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase()
+        const matchesName = account.name?.toLowerCase().includes(query)
+        const matchesCustomerName = account.customer?.name?.toLowerCase().includes(query)
+        const matchesCustomerEmail = account.customer?.email?.toLowerCase().includes(query)
+        const matchesLocationId = account.ghlLocationId?.toLowerCase().includes(query)
+        const matchesPhone = account.phoneNumber?.includes(query)
+
+        if (!matchesName && !matchesCustomerName && !matchesCustomerEmail && !matchesLocationId && !matchesPhone) {
+          return false
+        }
+      }
+
+      // Filter by status (WhatsApp connection status)
+      if (filterStatus !== 'all') {
+        if (filterStatus === 'connected' && account.status !== 'connected') return false
+        if (filterStatus === 'disconnected' && account.status === 'connected') return false
+        if (filterStatus === 'active' && !account.isActive) return false
+        if (filterStatus === 'inactive' && account.isActive) return false
+      }
+
+      // Filter by customer
+      if (filterCustomer !== 'all') {
+        if (account.customer?.id !== filterCustomer) return false
+      }
+
+      return true
+    })
+  }, [subAccounts, searchQuery, filterStatus, filterCustomer])
+
+  // Reset filters when switching tabs
+  const handleTabChange = (tab) => {
+    setActiveTab(tab)
+    setSearchQuery('')
+    setFilterPlan('all')
+    setFilterStatus('all')
+    setFilterCustomer('all')
+  }
+
   if (loading) {
     return <div className="text-center py-12">Loading...</div>
   }
@@ -146,7 +224,7 @@ export default function AdminDashboard() {
         <div className="border-b">
           <div className="flex">
             <button
-              onClick={() => setActiveTab('customers')}
+              onClick={() => handleTabChange('customers')}
               className={`px-6 py-3 text-sm font-medium ${
                 activeTab === 'customers'
                   ? 'border-b-2 border-primary-500 text-primary-500'
@@ -156,7 +234,7 @@ export default function AdminDashboard() {
               Customers ({customers.length})
             </button>
             <button
-              onClick={() => setActiveTab('subaccounts')}
+              onClick={() => handleTabChange('subaccounts')}
               className={`px-6 py-3 text-sm font-medium ${
                 activeTab === 'subaccounts'
                   ? 'border-b-2 border-primary-500 text-primary-500'
@@ -165,6 +243,89 @@ export default function AdminDashboard() {
             >
               Sub-Accounts ({subAccounts.length})
             </button>
+          </div>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="p-4 border-b bg-gray-50">
+          <div className="flex flex-wrap gap-4 items-center">
+            {/* Search Input */}
+            <div className="relative flex-1 min-w-[200px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder={activeTab === 'customers' ? 'Search by customer name or email...' : 'Search by name, customer, location ID, phone...'}
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              />
+            </div>
+
+            {/* Filters */}
+            <div className="flex items-center gap-2">
+              <Filter size={18} className="text-gray-500" />
+
+              {/* Plan Filter - only for customers tab */}
+              {activeTab === 'customers' && (
+                <select
+                  value={filterPlan}
+                  onChange={(e) => setFilterPlan(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                >
+                  <option value="all">All Plans</option>
+                  <option value="free">Free (Unlimited)</option>
+                  <option value="standard">Standard</option>
+                  <option value="volume">Volume</option>
+                </select>
+              )}
+
+              {/* Status Filter */}
+              <select
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+                className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+              >
+                {activeTab === 'customers' ? (
+                  <>
+                    <option value="all">All Status</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </>
+                ) : (
+                  <>
+                    <option value="all">All Status</option>
+                    <option value="connected">Connected</option>
+                    <option value="disconnected">Disconnected</option>
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </>
+                )}
+              </select>
+
+              {/* Customer Filter (only for sub-accounts tab) */}
+              {activeTab === 'subaccounts' && (
+                <select
+                  value={filterCustomer}
+                  onChange={(e) => setFilterCustomer(e.target.value)}
+                  className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 max-w-[200px]"
+                >
+                  <option value="all">All Customers</option>
+                  {customers.map((customer) => (
+                    <option key={customer.id} value={customer.id}>
+                      {customer.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
+
+            {/* Results count */}
+            <span className="text-sm text-gray-500">
+              {activeTab === 'customers'
+                ? `${filteredCustomers.length} of ${customers.length} customers`
+                : `${filteredSubAccounts.length} of ${subAccounts.length} sub-accounts`
+              }
+            </span>
           </div>
         </div>
 
@@ -182,7 +343,13 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {customers.map((customer) => {
+                {filteredCustomers.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                      No customers found matching your filters
+                    </td>
+                  </tr>
+                ) : filteredCustomers.map((customer) => {
                   const customerSubAccounts = getCustomerSubAccounts(customer.id)
                   const isExpanded = expandedCustomers[customer.id]
 
@@ -292,11 +459,6 @@ export default function AdminDashboard() {
                                   }`}>
                                     {subAccount.status}
                                   </span>
-                                  <span className={`text-xs px-2 py-1 rounded ${
-                                    subAccount.isPaid ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-                                  }`}>
-                                    {subAccount.isPaid ? 'Paid' : 'Unpaid'}
-                                  </span>
                                   <button
                                     onClick={() => toggleSubAccount(subAccount.id)}
                                     className="p-1 hover:bg-gray-100 rounded"
@@ -315,7 +477,7 @@ export default function AdminDashboard() {
                       ))}
                     </>
                   )
-                })}
+                }))}
               </tbody>
             </table>
           </div>
@@ -323,20 +485,28 @@ export default function AdminDashboard() {
           <table className="w-full">
             <thead className="bg-gray-50">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
-              {subAccounts.map((account) => (
+              {filteredSubAccounts.length === 0 ? (
+                <tr>
+                  <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                    No sub-accounts found matching your filters
+                  </td>
+                </tr>
+              ) : filteredSubAccounts.map((account) => (
                 <tr key={account.id}>
                   <td className="px-6 py-4 font-medium">{account.name}</td>
-                  <td className="px-6 py-4 text-gray-600">{account.customer?.email}</td>
+                  <td className="px-6 py-4">
+                    <p className="font-medium text-gray-900">{account.customer?.name || '-'}</p>
+                    <p className="text-sm text-gray-500">{account.customer?.email}</p>
+                  </td>
                   <td className="px-6 py-4 text-gray-600">{account.phoneNumber || '-'}</td>
                   <td className="px-6 py-4 text-gray-600 font-mono text-sm">{account.ghlLocationId || '-'}</td>
                   <td className="px-6 py-4">
@@ -346,13 +516,6 @@ export default function AdminDashboard() {
                       'bg-gray-100 text-gray-700'
                     }`}>
                       {account.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`text-xs px-2 py-1 rounded ${
-                      account.isPaid ? 'bg-green-100 text-green-700' : 'bg-orange-100 text-orange-700'
-                    }`}>
-                      {account.isPaid ? 'Paid' : 'Unpaid'}
                     </span>
                   </td>
                   <td className="px-6 py-4 text-right">

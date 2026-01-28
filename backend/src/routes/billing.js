@@ -22,6 +22,16 @@ router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
 // Get billing portal
 router.get('/portal', authenticateJWT, async (req, res) => {
   try {
+    // Check if Stripe is configured
+    if (!stripeService.isConfigured()) {
+      return res.status(503).json({ error: 'Billing is not configured' });
+    }
+
+    // Check if customer has Stripe account
+    if (!req.customer.stripeCustomerId) {
+      return res.status(400).json({ error: 'No subscription found. Please subscribe first.' });
+    }
+
     const session = await stripeService.createBillingPortalSession(req.customer);
     res.json({ url: session.url });
   } catch (error) {

@@ -7,6 +7,7 @@ import { Smartphone, Wifi, WifiOff, Plus, CreditCard, ExternalLink } from 'lucid
 
 export default function Dashboard() {
   const { user } = useAuth()
+  const isAdmin = user?.role === 'admin' || user?.hasUnlimitedAccess
   const [subAccounts, setSubAccounts] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -45,7 +46,7 @@ export default function Dashboard() {
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+      <div className={`grid grid-cols-1 ${isAdmin ? 'md:grid-cols-3' : 'md:grid-cols-4'} gap-6 mb-8`}>
         <div className="bg-white rounded-lg shadow p-6">
           <div className="flex items-center justify-between">
             <div>
@@ -82,42 +83,46 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="bg-white rounded-lg shadow p-6">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-sm text-gray-600">Paid Sub-Accounts</p>
-              <p className="text-3xl font-bold text-blue-600 mt-1">{paidCount}</p>
-            </div>
-            <div className="bg-blue-100 p-3 rounded-full">
-              <CreditCard className="text-blue-500" size={24} />
+        {!isAdmin && (
+          <div className="bg-white rounded-lg shadow p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600">Paid Sub-Accounts</p>
+                <p className="text-3xl font-bold text-blue-600 mt-1">{paidCount}</p>
+              </div>
+              <div className="bg-blue-100 p-3 rounded-full">
+                <CreditCard className="text-blue-500" size={24} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
 
-      {/* Subscription Status */}
-      <div className="bg-white rounded-lg shadow p-6 mb-8">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-semibold">Subscription Status</h2>
-            <p className="text-gray-600 mt-1">
-              {user?.subscriptionStatus === 'active' ? (
-                <span className="text-green-600">Your subscription is active</span>
-              ) : (
-                <span className="text-gray-500">No active subscription</span>
-              )}
-            </p>
+      {/* Subscription Status - only for regular users */}
+      {!isAdmin && (
+        <div className="bg-white rounded-lg shadow p-6 mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold">Subscription Status</h2>
+              <p className="text-gray-600 mt-1">
+                {user?.subscriptionStatus === 'active' ? (
+                  <span className="text-green-600">Your subscription is active</span>
+                ) : (
+                  <span className="text-gray-500">No active subscription</span>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={openBillingPortal}
+              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+            >
+              <CreditCard size={18} />
+              Manage Billing
+              <ExternalLink size={14} />
+            </button>
           </div>
-          <button
-            onClick={openBillingPortal}
-            className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            <CreditCard size={18} />
-            Manage Billing
-            <ExternalLink size={14} />
-          </button>
         </div>
-      </div>
+      )}
 
       {/* Quick Actions */}
       <div className="bg-white rounded-lg shadow p-6 mb-8">
