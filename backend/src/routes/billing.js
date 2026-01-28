@@ -4,7 +4,7 @@ const { authenticateJWT } = require('../middleware/auth');
 const stripeService = require('../services/stripe');
 const logger = require('../utils/logger');
 
-// Create checkout session
+// Create checkout session for sub-account
 router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
   try {
     const session = await stripeService.createCheckoutSession(
@@ -16,6 +16,22 @@ router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
   } catch (error) {
     logger.error('Checkout error:', error);
     res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+});
+
+// Create subscription checkout for customer
+router.post('/subscribe', authenticateJWT, async (req, res) => {
+  try {
+    // Check if Stripe is configured
+    if (!stripeService.isConfigured()) {
+      return res.status(503).json({ error: 'Billing is not configured' });
+    }
+
+    const session = await stripeService.createSubscriptionCheckout(req.customer);
+    res.json({ url: session.url });
+  } catch (error) {
+    logger.error('Subscribe error:', error);
+    res.status(500).json({ error: 'Failed to create subscription checkout' });
   }
 });
 

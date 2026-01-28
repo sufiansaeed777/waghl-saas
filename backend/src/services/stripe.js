@@ -72,6 +72,36 @@ class StripeService {
     }
   }
 
+  // Create subscription checkout for customer (no sub-account required)
+  async createSubscriptionCheckout(customer) {
+    try {
+      checkStripeConfigured();
+      if (!customer.stripeCustomerId) {
+        await this.createStripeCustomer(customer);
+      }
+
+      const session = await stripe.checkout.sessions.create({
+        customer: customer.stripeCustomerId,
+        payment_method_types: ['card'],
+        line_items: [{
+          price: process.env.STRIPE_PRICE_ID,
+          quantity: 1
+        }],
+        mode: 'subscription',
+        success_url: `${process.env.FRONTEND_URL}/dashboard?subscription=success`,
+        cancel_url: `${process.env.FRONTEND_URL}/dashboard?subscription=cancelled`,
+        metadata: {
+          customerId: customer.id
+        }
+      });
+
+      return session;
+    } catch (error) {
+      logger.error('Create subscription checkout error:', error);
+      throw error;
+    }
+  }
+
   // Handle webhook events
   async handleWebhook(event) {
     try {

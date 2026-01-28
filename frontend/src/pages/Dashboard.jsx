@@ -38,6 +38,15 @@ export default function Dashboard() {
     }
   }
 
+  const handleSubscribe = async () => {
+    try {
+      const { data } = await api.post('/billing/subscribe')
+      window.location.href = data.url
+    } catch (error) {
+      toast.error('Failed to start subscription checkout')
+    }
+  }
+
   return (
     <div>
       <div className="mb-8">
@@ -112,14 +121,24 @@ export default function Dashboard() {
                 )}
               </p>
             </div>
-            <button
-              onClick={openBillingPortal}
-              className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
-            >
-              <CreditCard size={18} />
-              Manage Billing
-              <ExternalLink size={14} />
-            </button>
+            {user?.subscriptionStatus === 'active' ? (
+              <button
+                onClick={openBillingPortal}
+                className="flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                <CreditCard size={18} />
+                Manage Billing
+                <ExternalLink size={14} />
+              </button>
+            ) : (
+              <button
+                onClick={handleSubscribe}
+                className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
+              >
+                <CreditCard size={18} />
+                Subscribe Now
+              </button>
+            )}
           </div>
         </div>
       )}
