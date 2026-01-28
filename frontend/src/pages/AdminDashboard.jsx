@@ -432,18 +432,18 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-2">
-                            {customer.hasUnlimitedAccess ? (
+                            {customer.role === 'admin' || customer.hasUnlimitedAccess ? (
                               <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">
                                 <Crown size={12} />
                                 Free (Unlimited)
                               </span>
                             ) : customer.planType === 'volume' ? (
                               <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
-                                Volume ($19)
+                                Volume (€19)
                               </span>
                             ) : (
                               <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
-                                Standard ($29)
+                                Standard (€29)
                               </span>
                             )}
                           </div>
