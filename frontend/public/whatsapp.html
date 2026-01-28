@@ -140,6 +140,57 @@
     }
     .setup-box h2 { color: #92400e; font-size: 18px; margin-bottom: 12px; }
     .setup-box p { color: #78350f; font-size: 14px; line-height: 1.5; }
+
+    /* Modal styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+    .modal-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+    .modal {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+      transform: scale(0.9);
+      transition: transform 0.3s ease;
+    }
+    .modal-overlay.show .modal {
+      transform: scale(1);
+    }
+    .modal-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+    .modal-icon.success { background: #d1fae5; }
+    .modal-icon.error { background: #fee2e2; }
+    .modal-icon svg { width: 32px; height: 32px; }
+    .modal-icon.success svg { fill: #10b981; }
+    .modal-icon.error svg { fill: #ef4444; }
+    .modal h2 { font-size: 20px; margin-bottom: 12px; color: #1f2937; }
+    .modal p { color: #6b7280; margin-bottom: 24px; line-height: 1.5; }
+    .modal .btn { margin-top: 8px; }
   </style>
 </head>
 <body>
@@ -159,6 +210,30 @@
     </div>
   </div>
 
+  <!-- Success Modal -->
+  <div class="modal-overlay" id="successModal">
+    <div class="modal">
+      <div class="modal-icon success">
+        <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+      </div>
+      <h2>Connection Successful!</h2>
+      <p id="successMessage">GHL location has been connected successfully. You can now connect your WhatsApp.</p>
+      <button class="btn btn-primary" onclick="closeModal('successModal'); loadStatus();">Continue</button>
+    </div>
+  </div>
+
+  <!-- Error Modal -->
+  <div class="modal-overlay" id="errorModal">
+    <div class="modal">
+      <div class="modal-icon error">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+      </div>
+      <h2>Connection Failed</h2>
+      <p id="errorMessage">An error occurred while connecting to GHL.</p>
+      <button class="btn btn-secondary" onclick="closeModal('errorModal')">Close</button>
+    </div>
+  </div>
+
   <script>
     // Get parameters from URL (query string and hash)
     const urlParams = new URLSearchParams(window.location.search);
@@ -174,6 +249,57 @@
     console.log('URL Params:', { token: !!token, locationId, ssoKey: !!ssoKey, error: errorParam, hash: window.location.hash });
     console.log('Referrer:', document.referrer);
     console.log('Full URL:', window.location.href);
+
+    // Modal functions
+    function showModal(modalId) {
+      document.getElementById(modalId).classList.add('show');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove('show');
+    }
+
+    function showSuccessModal(message) {
+      document.getElementById('successMessage').textContent = message || 'GHL location has been connected successfully!';
+      showModal('successModal');
+    }
+
+    function showErrorModal(message) {
+      document.getElementById('errorMessage').textContent = message || 'An error occurred while connecting.';
+      showModal('errorModal');
+    }
+
+    // Open GHL OAuth in popup window
+    function openGhlOAuth() {
+      const authUrl = apiBase + '/api/ghl/auth';
+      const width = 600;
+      const height = 700;
+      const left = (screen.width - width) / 2;
+      const top = (screen.height - height) / 2;
+
+      window.open(
+        authUrl,
+        'GHL OAuth',
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+      );
+    }
+
+    // Listen for OAuth result from popup
+    window.addEventListener('message', function(event) {
+      console.log('Received postMessage:', event.data);
+
+      if (event.data && event.data.type === 'GHL_OAUTH_RESULT') {
+        if (event.data.success) {
+          // Success - update token and locationId, show success modal
+          token = event.data.token;
+          locationId = event.data.locationId;
+          showSuccessModal(event.data.message);
+        } else {
+          // Error - show error modal
+          showErrorModal(event.data.message);
+        }
+      }
+    });
 
     // Helper: Check if locationId is an unresolved template variable
     function isTemplateVariable(id) {
@@ -537,7 +663,7 @@
     // Show location picker UI
     function showLocationPicker(locations) {
       if (locations.length === 0) {
-        showError('No GHL locations found. Please install the app from the GHL Marketplace first.');
+        showError('No GHL locations found. Click below to connect your GHL location.', true);
         return;
       }
 
@@ -723,17 +849,24 @@
       showLocationPicker(locations);
     }
 
-    function showError(message) {
+    function showError(message, showConnectButton = true) {
       document.getElementById('content').innerHTML = `
         <div class="error-box">
           <h1>Setup Required</h1>
           <p>${message}</p>
-          <div class="info-box" style="margin-top: 16px;">
-            <p><strong>To fix this:</strong><br>
-            1. Install the app from the GHL Marketplace<br>
-            2. Complete the OAuth authorization<br>
-            3. Refresh this page</p>
-          </div>
+          ${showConnectButton ? `
+            <button class="btn btn-primary" style="margin-top: 20px;" onclick="openGhlOAuth()">
+              Connect GHL Location
+            </button>
+            <p style="margin-top: 12px; font-size: 12px; color: #6b7280;">
+              This will open GHL authorization in a new window
+            </p>
+          ` : `
+            <div class="info-box" style="margin-top: 16px;">
+              <p><strong>To fix this:</strong><br>
+              Please contact your administrator to configure this location.</p>
+            </div>
+          `}
         </div>
       `;
     }

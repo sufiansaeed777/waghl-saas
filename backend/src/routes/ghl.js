@@ -132,28 +132,44 @@ router.get('/callback', async (req, res) => {
 
     if (!subAccount) {
       logger.error('No SubAccount found for this GHL location', { locationId, stateValid });
-      // Show user-friendly error page instead of redirect
+      // Send message to opener window and close popup
       return res.send(`
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
-          <title>Location Not Configured</title>
+          <title>Connection Failed</title>
           <style>
             body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
             .box { background: white; padding: 40px; border-radius: 16px; text-align: center; max-width: 500px; }
-            h1 { color: #ef4444; margin-bottom: 16px; }
-            p { color: #666; line-height: 1.6; }
-            .location-id { background: #f3f4f6; padding: 8px 16px; border-radius: 8px; font-family: monospace; margin: 16px 0; }
+            .spinner { width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #ef4444; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+            @keyframes spin { to { transform: rotate(360deg); } }
+            p { color: #666; }
           </style>
         </head>
         <body>
           <div class="box">
-            <h1>Location Not Configured</h1>
-            <p>This GHL location is not set up in our system yet.</p>
-            <div class="location-id">Location ID: ${locationId || 'Unknown'}</div>
-            <p>Please contact your administrator to configure this location before connecting WhatsApp.</p>
+            <div class="spinner"></div>
+            <p>Closing window...</p>
           </div>
+          <script>
+            // Send error to opener window
+            const result = {
+              type: 'GHL_OAUTH_RESULT',
+              success: false,
+              error: 'location_not_configured',
+              message: 'This GHL location is not set up in our system yet. Please contact your administrator.',
+              locationId: '${locationId || ''}'
+            };
+
+            if (window.opener) {
+              window.opener.postMessage(result, '*');
+              setTimeout(() => window.close(), 500);
+            } else {
+              // Fallback: show error if no opener
+              document.body.innerHTML = '<div class="box"><h1 style="color:#ef4444">Location Not Configured</h1><p>This GHL location is not set up yet.</p><p>Location ID: ${locationId || 'Unknown'}</p><p>Please close this window and contact your administrator.</p></div>';
+            }
+          </script>
         </body>
         </html>
       `);
@@ -199,29 +215,46 @@ router.get('/callback', async (req, res) => {
     logger.info('Set ghl_auth cookie for location:', finalLocationId);
 
     if (isFromGHL) {
-      // Redirect to WhatsApp connection page for GHL marketplace installs
-      // Using JavaScript redirect for better cross-origin/iframe compatibility
-      logger.info('Redirecting to WhatsApp setup page (from GHL)');
+      // Send success message to opener window and close popup
+      logger.info('GHL OAuth successful, notifying opener window');
       res.send(`
         <!DOCTYPE html>
         <html>
         <head>
           <meta charset="UTF-8">
-          <meta http-equiv="refresh" content="0;url=${whatsappPageUrl}">
-          <title>Redirecting...</title>
+          <title>Connection Successful</title>
           <style>
             body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%); }
             .box { background: white; padding: 40px; border-radius: 16px; text-align: center; }
             .spinner { width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #0f766e; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
             @keyframes spin { to { transform: rotate(360deg); } }
+            p { color: #666; }
           </style>
         </head>
         <body>
           <div class="box">
             <div class="spinner"></div>
-            <p>Setting up WhatsApp Connect...</p>
+            <p>Connection successful! Closing window...</p>
           </div>
-          <script>window.location.href = "${whatsappPageUrl}";</script>
+          <script>
+            // Send success to opener window
+            const result = {
+              type: 'GHL_OAUTH_RESULT',
+              success: true,
+              token: '${embedToken}',
+              locationId: '${finalLocationId}',
+              subAccountId: '${subAccount.id}',
+              message: 'GHL location connected successfully!'
+            };
+
+            if (window.opener) {
+              window.opener.postMessage(result, '*');
+              setTimeout(() => window.close(), 500);
+            } else {
+              // Fallback: redirect to WhatsApp page if no opener
+              window.location.href = "${whatsappPageUrl}";
+            }
+          </script>
         </body>
         </html>
       `);
