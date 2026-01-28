@@ -920,6 +920,9 @@
           <button class="btn btn-danger" onclick="disconnect()">
             Disconnect WhatsApp
           </button>
+          <button class="btn btn-secondary" style="margin-top: 12px;" onclick="uninstallGhl()">
+            Uninstall from GHL
+          </button>
         `;
       } else if (hasQR) {
         // Use image endpoint instead of data URI (works better in iframes)
@@ -1022,6 +1025,32 @@
         }
       } catch (err) {
         alert('Disconnect failed');
+      }
+    }
+
+    async function uninstallGhl() {
+      if (!confirm('Are you sure you want to uninstall this app from GHL?\n\nThis will:\n- Disconnect WhatsApp\n- Remove the app from your GHL location')) return;
+
+      try {
+        const res = await fetch(apiBase + '/api/embed/ghl-uninstall/' + token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locationId: locationId })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+          alert('App uninstalled successfully!');
+          document.getElementById('content').innerHTML = `
+            <div class="info-box" style="background: #d1fae5; border-color: #10b981;">
+              <p><strong>App Uninstalled!</strong></p>
+              <p>The app has been removed from your GHL location. You can close this window.</p>
+            </div>
+          `;
+        } else {
+          alert(data.error || 'Failed to uninstall');
+        }
+      } catch (err) {
+        alert('Uninstall failed: ' + err.message);
       }
     }
 

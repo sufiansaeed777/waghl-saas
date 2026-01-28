@@ -502,6 +502,69 @@ router.post('/disconnect/:token', async (req, res) => {
   }
 });
 
+// Uninstall GHL app (for embed page - calls GHL API to remove app)
+// SECURITY: Validates locationId
+const ghlService = require('../services/ghl');
+
+router.post('/ghl-uninstall/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+    const { locationId } = req.body;
+
+    const subAccountId = await verifyTokenWithFallback(token);
+    if (!subAccountId) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const subAccount = await SubAccount.findByPk(subAccountId);
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // Verify locationId matches
+    if (locationId && subAccount.ghlLocationId !== locationId) {
+      logger.warn(`GHL Uninstall: Location ID mismatch for token`);
+      return res.status(403).json({ error: 'Location ID mismatch' });
+    }
+
+    // Check if GHL is connected
+    if (!subAccount.ghlConnected || !subAccount.ghlAccessToken) {
+      return res.status(400).json({ error: 'GHL is not connected' });
+    }
+
+    // Call GHL API to uninstall
+    const result = await ghlService.uninstallFromLocation(subAccount);
+
+    if (result.success) {
+      // Also disconnect WhatsApp if connected
+      await whatsappService.disconnect(subAccountId);
+
+      res.json({
+        success: true,
+        message: 'App uninstalled from GHL successfully'
+      });
+    } else {
+      // If API failed, still clear local data
+      await subAccount.update({
+        ghlAccessToken: null,
+        ghlRefreshToken: null,
+        ghlTokenExpiresAt: null,
+        ghlLocationId: null,
+        ghlConnected: false
+      });
+
+      res.json({
+        success: true,
+        message: 'GHL API failed but local data cleared',
+        apiError: result.error
+      });
+    }
+  } catch (error) {
+    logger.error('Embed GHL uninstall error:', error);
+    res.status(500).json({ error: 'Failed to uninstall GHL' });
+  }
+});
+
 // Render QR code page HTML
 function renderQRPage(subAccount, status, token) {
   const isConnected = status.status === 'connected';
