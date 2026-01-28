@@ -261,7 +261,7 @@ export default function SubAccounts() {
                     </div>
                   </td>
                 </tr>
-              )))}
+              ))}
             </tbody>
           </table>
         </div>
