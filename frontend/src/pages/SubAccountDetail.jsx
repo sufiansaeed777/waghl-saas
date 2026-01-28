@@ -275,21 +275,38 @@ export default function SubAccountDetail() {
                 Disconnect
               </button>
             </div>
+          ) : status?.status === 'connecting' ? (
+            <div className="text-center py-4">
+              <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <RefreshCw className="text-blue-500 animate-spin" size={32} />
+              </div>
+              <p className="text-blue-600 font-medium mb-1">Connecting...</p>
+              <p className="text-gray-500 text-sm">Please wait while we establish the connection</p>
+            </div>
           ) : status?.qrCode ? (
             <div className="text-center py-4">
-              <p className="text-gray-600 mb-4">Scan this QR code with WhatsApp</p>
-              <img
-                src={status.qrCode}
-                alt="QR Code"
-                className="mx-auto mb-4 border rounded-lg"
-                style={{ maxWidth: '200px' }}
-              />
+              <p className="text-gray-600 mb-2">Scan this QR code with WhatsApp</p>
+              <p className="text-sm text-gray-500 mb-4">Open WhatsApp → Settings → Linked Devices → Link a Device</p>
+              <div className="relative inline-block">
+                <img
+                  src={status.qrCode}
+                  alt="QR Code"
+                  className="mx-auto mb-4 border rounded-lg"
+                  style={{ maxWidth: '200px' }}
+                />
+                <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2">
+                  <span className="flex items-center gap-1 text-xs bg-yellow-100 text-yellow-700 px-2 py-1 rounded-full">
+                    <RefreshCw className="animate-spin" size={12} />
+                    Waiting for scan...
+                  </span>
+                </div>
+              </div>
               <button
                 onClick={fetchStatus}
-                className="flex items-center gap-2 mx-auto text-gray-600 hover:text-gray-900"
+                className="flex items-center gap-2 mx-auto text-gray-600 hover:text-gray-900 mt-4"
               >
                 <RefreshCw size={18} />
-                Refresh
+                Refresh QR Code
               </button>
             </div>
           ) : (

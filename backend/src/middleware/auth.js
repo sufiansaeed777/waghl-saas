@@ -107,8 +107,8 @@ const requirePaidSubAccount = async (req, res, next) => {
       return res.status(400).json({ error: 'Sub-account ID required' });
     }
 
-    // Admin bypass
-    if (req.customer.role === 'admin') {
+    // Admin or unlimited access bypass
+    if (req.customer.role === 'admin' || req.customer.hasUnlimitedAccess) {
       return next();
     }
 
