@@ -310,7 +310,7 @@ router.get('/status/:subAccountId', authenticateJWT, async (req, res) => {
   }
 });
 
-// Disconnect GHL from sub-account
+// Disconnect GHL from sub-account (keeps locationId for reconnection)
 router.post('/disconnect/:subAccountId', authenticateJWT, async (req, res) => {
   try {
     const { subAccountId } = req.params;
@@ -334,6 +334,43 @@ router.post('/disconnect/:subAccountId', authenticateJWT, async (req, res) => {
   } catch (error) {
     logger.error('GHL disconnect error:', error);
     res.status(500).json({ error: 'Failed to disconnect GHL' });
+  }
+});
+
+// Full uninstall - clears ALL GHL data including locationId
+router.post('/uninstall/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    const { subAccountId } = req.params;
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    const oldLocationId = subAccount.ghlLocationId;
+
+    // Clear ALL GHL data
+    await subAccount.update({
+      ghlAccessToken: null,
+      ghlRefreshToken: null,
+      ghlTokenExpiresAt: null,
+      ghlLocationId: null,
+      ghlConnected: false
+    });
+
+    logger.info(`GHL fully uninstalled for sub-account ${subAccountId}, was location: ${oldLocationId}`);
+
+    res.json({
+      success: true,
+      message: 'GHL fully uninstalled - locationId cleared',
+      previousLocationId: oldLocationId
+    });
+  } catch (error) {
+    logger.error('GHL uninstall error:', error);
+    res.status(500).json({ error: 'Failed to uninstall GHL' });
   }
 });
 

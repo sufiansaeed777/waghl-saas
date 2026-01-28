@@ -269,4 +269,65 @@ router.get('/stats', async (req, res) => {
   }
 });
 
+// Bulk uninstall GHL from all sub-accounts (clears ALL GHL data)
+router.post('/ghl/bulk-uninstall', async (req, res) => {
+  try {
+    const [updatedCount] = await SubAccount.update(
+      {
+        ghlAccessToken: null,
+        ghlRefreshToken: null,
+        ghlTokenExpiresAt: null,
+        ghlLocationId: null,
+        ghlConnected: false
+      },
+      { where: {} }
+    );
+
+    logger.info(`Admin bulk GHL uninstall: cleared ${updatedCount} sub-accounts`);
+
+    res.json({
+      success: true,
+      message: `GHL data cleared from ${updatedCount} sub-accounts`,
+      updatedCount
+    });
+  } catch (error) {
+    logger.error('Admin bulk GHL uninstall error:', error);
+    res.status(500).json({ error: 'Failed to bulk uninstall GHL' });
+  }
+});
+
+// Uninstall GHL from specific sub-account (admin version - no ownership check)
+router.post('/ghl/uninstall/:subAccountId', async (req, res) => {
+  try {
+    const { subAccountId } = req.params;
+
+    const subAccount = await SubAccount.findByPk(subAccountId);
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    const oldLocationId = subAccount.ghlLocationId;
+
+    await subAccount.update({
+      ghlAccessToken: null,
+      ghlRefreshToken: null,
+      ghlTokenExpiresAt: null,
+      ghlLocationId: null,
+      ghlConnected: false
+    });
+
+    logger.info(`Admin GHL uninstall for sub-account ${subAccountId}, was location: ${oldLocationId}`);
+
+    res.json({
+      success: true,
+      message: 'GHL fully uninstalled',
+      previousLocationId: oldLocationId
+    });
+  } catch (error) {
+    logger.error('Admin GHL uninstall error:', error);
+    res.status(500).json({ error: 'Failed to uninstall GHL' });
+  }
+});
+
 module.exports = router;
