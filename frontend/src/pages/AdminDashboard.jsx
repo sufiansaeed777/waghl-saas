@@ -116,18 +116,16 @@ export default function AdminDashboard() {
     }
   }
 
-  const giftSubAccount = async (subAccountId, currentPaid) => {
-    const action = currentPaid ? 'revoke' : 'grant'
-    if (!confirm(`Are you sure you want to ${action} paid status for this sub-account?`)) return
+  const giftSubAccount = async (subAccountId, isGifted) => {
+    const action = isGifted ? 'remove gift from' : 'gift free access to'
+    if (!confirm(`Are you sure you want to ${action} this sub-account?`)) return
 
     try {
-      await api.put(`/admin/sub-accounts/${subAccountId}/payment`, {
-        isPaid: !currentPaid
-      })
-      toast.success(`Sub-account ${!currentPaid ? 'marked as paid' : 'marked as unpaid'}`)
+      const { data } = await api.put(`/admin/sub-accounts/${subAccountId}/gift`)
+      toast.success(data.message)
       fetchData()
     } catch (error) {
-      toast.error(error.response?.data?.error || `Failed to ${action} paid status`)
+      toast.error(error.response?.data?.error || 'Failed to update gift status')
     }
   }
 
@@ -562,6 +560,12 @@ export default function AdminDashboard() {
                                   }`}>
                                     {subAccount.status}
                                   </span>
+                                  {subAccount.isGifted && (
+                                    <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">
+                                      <Gift size={12} />
+                                      Free
+                                    </span>
+                                  )}
                                   <button
                                     onClick={() => openEditModal(subAccount)}
                                     className="p-1 hover:bg-blue-100 text-gray-500 hover:text-blue-600 rounded"
@@ -570,11 +574,11 @@ export default function AdminDashboard() {
                                     <Pencil size={16} />
                                   </button>
                                   <button
-                                    onClick={() => giftSubAccount(subAccount.id, subAccount.isPaid)}
-                                    className={`p-1 rounded ${subAccount.isPaid ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
-                                    title={subAccount.isPaid ? 'Cancel subscription' : 'Resume subscription'}
+                                    onClick={() => giftSubAccount(subAccount.id, subAccount.isGifted)}
+                                    className={`p-1 rounded ${subAccount.isGifted ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' : 'hover:bg-gray-100 text-gray-500'}`}
+                                    title={subAccount.isGifted ? 'Remove free gift' : 'Gift free access'}
                                   >
-                                    {subAccount.isPaid ? <XCircle size={18} /> : <PlayCircle size={18} />}
+                                    <Gift size={18} />
                                   </button>
                                   <button
                                     onClick={() => toggleSubAccount(subAccount.id)}
@@ -642,6 +646,12 @@ export default function AdminDashboard() {
                       }`}>
                         {account.status}
                       </span>
+                      {account.isGifted && (
+                        <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">
+                          <Gift size={12} />
+                          Free
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="px-6 py-4 text-right">
@@ -654,11 +664,11 @@ export default function AdminDashboard() {
                         <Pencil size={18} />
                       </button>
                       <button
-                        onClick={() => giftSubAccount(account.id, account.isPaid)}
-                        className={`p-2 rounded ${account.isPaid ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
-                        title={account.isPaid ? 'Cancel subscription' : 'Resume subscription'}
+                        onClick={() => giftSubAccount(account.id, account.isGifted)}
+                        className={`p-2 rounded ${account.isGifted ? 'bg-yellow-100 text-yellow-600 hover:bg-yellow-200' : 'hover:bg-gray-100 text-gray-500'}`}
+                        title={account.isGifted ? 'Remove free gift' : 'Gift free access'}
                       >
-                        {account.isPaid ? <XCircle size={20} /> : <PlayCircle size={20} />}
+                        <Gift size={20} />
                       </button>
                       <button
                         onClick={() => toggleSubAccount(account.id)}
