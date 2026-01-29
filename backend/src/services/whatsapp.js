@@ -287,13 +287,15 @@ class WhatsAppService {
 
   // Send message (text or media)
   async sendMessage(subAccountId, toNumber, content, messageType = 'text', mediaUrl = null, fileName = null) {
+    let subAccount = null;
+
     try {
       const socket = connections.get(subAccountId);
       if (!socket) {
         throw new Error('Not connected. Please scan QR code first.');
       }
 
-      const subAccount = await SubAccount.findByPk(subAccountId);
+      subAccount = await SubAccount.findByPk(subAccountId);
       if (!subAccount || subAccount.status !== 'connected') {
         throw new Error('Sub-account is not connected');
       }
@@ -374,6 +376,29 @@ class WhatsAppService {
 
     } catch (error) {
       logger.error(`Send message error for ${subAccountId}:`, error);
+
+      // Send email notification about failed message delivery
+      try {
+        if (!subAccount) {
+          subAccount = await SubAccount.findByPk(subAccountId);
+        }
+        if (subAccount) {
+          const customer = await Customer.findByPk(subAccount.customerId);
+          if (customer) {
+            emailService.sendMessageDeliveryFailed(
+              customer.email,
+              customer.name,
+              subAccount.name,
+              toNumber,
+              error.message,
+              messageType === 'text' ? content : null
+            ).catch(err => logger.error('Failed to send message delivery failed email:', err));
+          }
+        }
+      } catch (emailErr) {
+        logger.error('Error sending message delivery failed email:', emailErr);
+      }
+
       throw error;
     }
   }

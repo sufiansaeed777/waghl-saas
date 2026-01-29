@@ -295,6 +295,35 @@ class EmailService {
 
     return this.sendEmail(email, subject, html);
   }
+
+  // Message delivery failed notification
+  async sendMessageDeliveryFailed(email, name, subAccountName, toNumber, errorMessage, messageContent = null) {
+    const subject = 'Message Delivery Failed - Action Required';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #ef4444;">Message Delivery Failed</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>A message failed to deliver via WhatsApp:</p>
+        <div style="background-color: #fef2f2; border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Sub-Account:</strong> ${subAccountName || 'N/A'}</p>
+          <p style="margin: 10px 0 0 0;"><strong>To:</strong> ${toNumber}</p>
+          <p style="margin: 10px 0 0 0;"><strong>Error:</strong> ${errorMessage}</p>
+          ${messageContent ? `<p style="margin: 10px 0 0 0;"><strong>Message Preview:</strong> ${messageContent.substring(0, 100)}${messageContent.length > 100 ? '...' : ''}</p>` : ''}
+        </div>
+        <p><strong>Possible causes:</strong></p>
+        <ul>
+          <li>WhatsApp session disconnected - please reconnect</li>
+          <li>Invalid phone number format</li>
+          <li>Recipient has blocked messages or doesn't have WhatsApp</li>
+          <li>Rate limiting by WhatsApp</li>
+        </ul>
+        <p>Please check your dashboard and try again.</p>
+        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+      </div>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
 }
 
 module.exports = new EmailService();
