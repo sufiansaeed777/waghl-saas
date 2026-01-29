@@ -126,21 +126,27 @@ class StripeService {
         const subscription = await stripe.subscriptions.retrieve(customer.subscriptionId);
         const subscriptionItem = subscription.items.data[0];
 
-        // If switching to volume pricing, update the price
+        // If switching to volume pricing, update the price for ALL items
         if (isVolumePrice && subscriptionItem.price.id !== priceId) {
-          // Update to volume price for ALL items from next billing cycle
+          // Update to volume price for ALL items
+          // proration_behavior: 'create_prorations' will:
+          // - Credit customer for unused portion at old rate (10 × €29)
+          // - Charge for remaining portion at new rate (11 × €19)
+          // - Net effect: Customer pays €19 prorated for 11th slot, gets credit for price reduction
+          // - From next month: All 11 slots at €19 = €209/month
           await stripe.subscriptions.update(customer.subscriptionId, {
             items: [{
               id: subscriptionItem.id,
               price: priceId,
               quantity: newQuantity
             }],
-            proration_behavior: 'none' // Apply from next billing cycle
+            proration_behavior: 'create_prorations'
           });
         } else {
-          // Just increase quantity
+          // Just increase quantity (charges customer for new slot prorated)
           await stripe.subscriptionItems.update(subscriptionItem.id, {
-            quantity: newQuantity
+            quantity: newQuantity,
+            proration_behavior: 'create_prorations'
           });
         }
 
