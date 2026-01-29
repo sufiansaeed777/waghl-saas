@@ -3,6 +3,7 @@ const router = express.Router();
 const { Customer, SubAccount, Message } = require('../models');
 const { authenticateJWT, requireAdmin } = require('../middleware/auth');
 const whatsappService = require('../services/whatsapp');
+const ghlService = require('../services/ghl');
 const logger = require('../utils/logger');
 
 // All admin routes require authentication and admin role
@@ -90,8 +91,45 @@ router.put('/customers/:id/toggle', async (req, res) => {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
+    const wasActive = customer.isActive;
     customer.isActive = !customer.isActive;
     await customer.save();
+
+    // If deactivating, disconnect all sub-accounts' GHL and WhatsApp connections
+    if (wasActive && !customer.isActive) {
+      const subAccounts = await SubAccount.findAll({
+        where: { customerId: customer.id }
+      });
+
+      for (const subAccount of subAccounts) {
+        // Disconnect WhatsApp
+        try {
+          await whatsappService.disconnect(subAccount.id);
+          logger.info(`Disconnected WhatsApp for sub-account ${subAccount.id} due to customer deactivation`);
+        } catch (err) {
+          logger.warn(`Failed to disconnect WhatsApp for sub-account ${subAccount.id}:`, err.message);
+        }
+
+        // Disconnect GHL (call uninstall API if tokens exist)
+        if (subAccount.ghlAccessToken && subAccount.ghlLocationId) {
+          try {
+            await ghlService.uninstallFromLocation(subAccount);
+            logger.info(`Disconnected GHL for sub-account ${subAccount.id} due to customer deactivation`);
+          } catch (err) {
+            logger.warn(`Failed to disconnect GHL for sub-account ${subAccount.id}:`, err.message);
+          }
+        }
+
+        // Clear GHL tokens
+        await subAccount.update({
+          ghlAccessToken: null,
+          ghlRefreshToken: null,
+          ghlConnected: false
+        });
+      }
+
+      logger.info(`Customer ${customer.id} deactivated - disconnected ${subAccounts.length} sub-accounts`);
+    }
 
     res.json({
       message: `Customer ${customer.isActive ? 'activated' : 'deactivated'}`,
