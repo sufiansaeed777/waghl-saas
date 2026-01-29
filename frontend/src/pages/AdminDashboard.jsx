@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Users, Smartphone, MessageSquare, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Phone, MapPin, Crown, Gift, Search, Filter, Trash2, XCircle, PlayCircle } from 'lucide-react'
+import { Users, Smartphone, MessageSquare, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Phone, MapPin, Crown, Gift, Search, Filter, Trash2, XCircle, PlayCircle, Pencil, X } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function AdminDashboard() {
@@ -18,6 +18,10 @@ export default function AdminDashboard() {
   const [filterPlan, setFilterPlan] = useState('all')
   const [filterStatus, setFilterStatus] = useState('all')
   const [filterCustomer, setFilterCustomer] = useState('all')
+
+  // Edit modal state
+  const [editModal, setEditModal] = useState({ open: false, subAccount: null })
+  const [editForm, setEditForm] = useState({ name: '', ghlLocationId: '' })
 
   useEffect(() => {
     fetchData()
@@ -124,6 +128,35 @@ export default function AdminDashboard() {
       fetchData()
     } catch (error) {
       toast.error(error.response?.data?.error || `Failed to ${action} paid status`)
+    }
+  }
+
+  const openEditModal = (subAccount) => {
+    setEditForm({
+      name: subAccount.name || '',
+      ghlLocationId: subAccount.ghlLocationId || ''
+    })
+    setEditModal({ open: true, subAccount })
+  }
+
+  const closeEditModal = () => {
+    setEditModal({ open: false, subAccount: null })
+    setEditForm({ name: '', ghlLocationId: '' })
+  }
+
+  const saveSubAccount = async () => {
+    if (!editModal.subAccount) return
+
+    try {
+      await api.put(`/admin/sub-accounts/${editModal.subAccount.id}`, {
+        name: editForm.name,
+        ghlLocationId: editForm.ghlLocationId
+      })
+      toast.success('Sub-account updated')
+      closeEditModal()
+      fetchData()
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to update sub-account')
     }
   }
 
@@ -530,6 +563,13 @@ export default function AdminDashboard() {
                                     {subAccount.status}
                                   </span>
                                   <button
+                                    onClick={() => openEditModal(subAccount)}
+                                    className="p-1 hover:bg-blue-100 text-gray-500 hover:text-blue-600 rounded"
+                                    title="Edit sub-account"
+                                  >
+                                    <Pencil size={16} />
+                                  </button>
+                                  <button
                                     onClick={() => giftSubAccount(subAccount.id, subAccount.isPaid)}
                                     className={`p-1 rounded ${subAccount.isPaid ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
                                     title={subAccount.isPaid ? 'Cancel subscription' : 'Resume subscription'}
@@ -607,6 +647,13 @@ export default function AdminDashboard() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
+                        onClick={() => openEditModal(account)}
+                        className="p-2 hover:bg-blue-100 text-gray-500 hover:text-blue-600 rounded"
+                        title="Edit sub-account"
+                      >
+                        <Pencil size={18} />
+                      </button>
+                      <button
                         onClick={() => giftSubAccount(account.id, account.isPaid)}
                         className={`p-2 rounded ${account.isPaid ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
                         title={account.isPaid ? 'Cancel subscription' : 'Resume subscription'}
@@ -638,6 +685,63 @@ export default function AdminDashboard() {
           </table>
         )}
       </div>
+
+      {/* Edit Sub-Account Modal */}
+      {editModal.open && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl w-full max-w-md mx-4">
+            <div className="flex items-center justify-between p-4 border-b">
+              <h3 className="text-lg font-semibold">Edit Sub-Account</h3>
+              <button
+                onClick={closeEditModal}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Name
+                </label>
+                <input
+                  type="text"
+                  value={editForm.name}
+                  onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Sub-account name"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Location ID
+                </label>
+                <input
+                  type="text"
+                  value={editForm.ghlLocationId}
+                  onChange={(e) => setEditForm({ ...editForm, ghlLocationId: e.target.value })}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-mono text-sm"
+                  placeholder="GHL Location ID"
+                />
+              </div>
+            </div>
+            <div className="flex justify-end gap-3 p-4 border-t">
+              <button
+                onClick={closeEditModal}
+                className="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveSubAccount}
+                className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -103,6 +103,40 @@ router.put('/customers/:id/toggle', async (req, res) => {
   }
 });
 
+// Update sub-account details (name, location ID)
+router.put('/sub-accounts/:id', async (req, res) => {
+  try {
+    const { name, ghlLocationId } = req.body;
+    const subAccount = await SubAccount.findByPk(req.params.id, {
+      include: [{ model: Customer, as: 'customer', attributes: ['id', 'email', 'name'] }]
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // Update fields if provided
+    if (name !== undefined) {
+      subAccount.name = name;
+    }
+    if (ghlLocationId !== undefined) {
+      subAccount.ghlLocationId = ghlLocationId;
+    }
+
+    await subAccount.save();
+
+    logger.info(`Admin updated sub-account ${subAccount.id}: name="${subAccount.name}", locationId="${subAccount.ghlLocationId}"`);
+
+    res.json({
+      message: 'Sub-account updated',
+      subAccount
+    });
+  } catch (error) {
+    logger.error('Admin update sub-account error:', error);
+    res.status(500).json({ error: 'Failed to update sub-account' });
+  }
+});
+
 // Toggle sub-account active status
 router.put('/sub-accounts/:id/toggle', async (req, res) => {
   try {
