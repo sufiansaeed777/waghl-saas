@@ -274,6 +274,27 @@ export default function SubAccountDetail() {
               >
                 Disconnect
               </button>
+
+              {/* Embed link for GHL custom menu */}
+              {subAccount?.ghlLocationId && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg text-left">
+                  <p className="text-xs text-gray-500 mb-1">Client's GHL Custom Menu Link:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs bg-gray-200 px-2 py-1 rounded flex-1 overflow-x-auto">
+                      https://whatsapp.bibotcrm.it/whatsapp.html?locationId={subAccount.ghlLocationId}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`https://whatsapp.bibotcrm.it/whatsapp.html?locationId=${subAccount.ghlLocationId}`)
+                        toast.success('Link copied!')
+                      }}
+                      className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : status?.status === 'connecting' ? (
             <div className="text-center py-4">
@@ -314,7 +335,7 @@ export default function SubAccountDetail() {
               <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <WifiOff className="text-gray-400" size={32} />
               </div>
-              <p className="text-gray-600 mb-4">Connect your WhatsApp number</p>
+              <p className="text-gray-600 mb-4">Connect your WhatsApp number - Scan the QR code with your WhatsApp</p>
               <button
                 onClick={connectWhatsApp}
                 disabled={connecting}
@@ -322,6 +343,27 @@ export default function SubAccountDetail() {
               >
                 {connecting ? 'Connecting...' : 'Connect WhatsApp'}
               </button>
+
+              {/* Embed link for GHL custom menu */}
+              {subAccount?.ghlLocationId && (
+                <div className="mt-4 p-3 bg-gray-50 rounded-lg text-left">
+                  <p className="text-xs text-gray-500 mb-1">Or add this link to your client's GHL Custom Menu Links:</p>
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs bg-gray-200 px-2 py-1 rounded flex-1 overflow-x-auto">
+                      https://whatsapp.bibotcrm.it/whatsapp.html?locationId={subAccount.ghlLocationId}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(`https://whatsapp.bibotcrm.it/whatsapp.html?locationId=${subAccount.ghlLocationId}`)
+                        toast.success('Link copied!')
+                      }}
+                      className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
