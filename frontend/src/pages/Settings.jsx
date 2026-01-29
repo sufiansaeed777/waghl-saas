@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { CreditCard, ExternalLink } from 'lucide-react'
+import { CreditCard, ExternalLink, Link, Copy } from 'lucide-react'
 
 export default function Settings() {
   const { user, fetchUser } = useAuth()
@@ -111,6 +111,38 @@ export default function Settings() {
           </div>
         </div>
       )}
+
+      {/* GHL Custom Menu Link Section */}
+      <div className="bg-white rounded-lg shadow p-6 mb-6">
+        <h2 className="text-lg font-semibold mb-2 flex items-center gap-2">
+          <Link size={20} />
+          GHL Custom Menu Link
+        </h2>
+        <p className="text-sm text-gray-600 mb-4">
+          Add this link to your client's GHL Custom Menu Links to enable WhatsApp QR scanning directly from their dashboard.
+        </p>
+        <div className="bg-gray-50 rounded-lg p-4">
+          <p className="text-xs text-gray-500 mb-2">Copy this URL and add it to GHL → Settings → Custom Menu Links:</p>
+          <div className="flex items-center gap-2">
+            <code className="text-sm bg-gray-200 px-3 py-2 rounded flex-1 overflow-x-auto font-mono">
+              {'https://whatsapp.bibotcrm.it/whatsapp.html?locationId={{location.id}}'}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText('https://whatsapp.bibotcrm.it/whatsapp.html?locationId={{location.id}}')
+                toast.success('Link copied!')
+              }}
+              className="flex items-center gap-1 px-3 py-2 bg-primary-500 text-white rounded hover:bg-primary-600"
+            >
+              <Copy size={16} />
+              Copy
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Note: <code className="bg-gray-200 px-1 rounded">{'{{location.id}}'}</code> will be automatically replaced with the actual location ID by GHL.
+          </p>
+        </div>
+      </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Profile Settings */}
