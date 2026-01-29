@@ -4,6 +4,7 @@ const { Customer, SubAccount, Message } = require('../models');
 const { authenticateJWT, requireAdmin } = require('../middleware/auth');
 const whatsappService = require('../services/whatsapp');
 const ghlService = require('../services/ghl');
+const emailService = require('../services/email');
 const logger = require('../utils/logger');
 
 // All admin routes require authentication and admin role
@@ -129,6 +130,24 @@ router.put('/customers/:id/toggle', async (req, res) => {
       }
 
       logger.info(`Customer ${customer.id} deactivated - disconnected ${subAccounts.length} sub-accounts`);
+
+      // Send deactivation email
+      try {
+        await emailService.sendAccountDeactivated(customer.email, customer.name);
+        logger.info(`Sent deactivation email to ${customer.email}`);
+      } catch (err) {
+        logger.warn(`Failed to send deactivation email to ${customer.email}:`, err.message);
+      }
+    }
+
+    // If reactivating, send reactivation email
+    if (!wasActive && customer.isActive) {
+      try {
+        await emailService.sendAccountReactivated(customer.email, customer.name);
+        logger.info(`Sent reactivation email to ${customer.email}`);
+      } catch (err) {
+        logger.warn(`Failed to send reactivation email to ${customer.email}:`, err.message);
+      }
     }
 
     res.json({

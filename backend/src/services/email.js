@@ -296,6 +296,57 @@ class EmailService {
     return this.sendEmail(email, subject, html);
   }
 
+  // Account deactivated
+  async sendAccountDeactivated(email, name, reason = null) {
+    const subject = 'Your Account Has Been Deactivated';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #ef4444;">Account Deactivated</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>Your WAGHL account has been deactivated by an administrator.</p>
+        <div style="background-color: #fef2f2; border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Status:</strong> Inactive</p>
+          ${reason ? `<p style="margin: 10px 0 0 0;"><strong>Reason:</strong> ${reason}</p>` : ''}
+        </div>
+        <p><strong>What this means:</strong></p>
+        <ul>
+          <li>You can no longer log in to your account</li>
+          <li>All WhatsApp connections have been disconnected</li>
+          <li>All GoHighLevel integrations have been removed</li>
+          <li>Messages will no longer be sent or received</li>
+        </ul>
+        <p>If you believe this was done in error, please contact support.</p>
+        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+      </div>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
+
+  // Account reactivated
+  async sendAccountReactivated(email, name) {
+    const subject = 'Your Account Has Been Reactivated';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #22c55e;">Account Reactivated!</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>Great news! Your WAGHL account has been reactivated.</p>
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Status:</strong> Active</p>
+        </div>
+        <p>You can now log in to your account. Please note that you may need to:</p>
+        <ul>
+          <li>Reconnect your GoHighLevel locations</li>
+          <li>Scan QR codes to reconnect your WhatsApp numbers</li>
+        </ul>
+        <p>Welcome back!</p>
+        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+      </div>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
+
   // Message delivery failed notification
   async sendMessageDeliveryFailed(email, name, subAccountName, toNumber, errorMessage, messageContent = null) {
     const subject = 'Message Delivery Failed - Action Required';
