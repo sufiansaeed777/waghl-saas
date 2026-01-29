@@ -378,6 +378,27 @@ export default function SubAccountDetail() {
           <li><strong>Connect WhatsApp</strong> - Scan the QR code with your WhatsApp</li>
           <li>Send messages in GHL - they'll be delivered via WhatsApp!</li>
         </ol>
+
+        {/* GHL Custom Menu Link */}
+        <div className="mt-4 pt-4 border-t border-blue-200">
+          <p className="text-sm text-blue-800 mb-2">
+            <strong>For your clients:</strong> Add this link to GHL Custom Menu Links to let them scan QR directly:
+          </p>
+          <div className="flex items-center gap-2 flex-wrap">
+            <code className="text-xs bg-blue-100 px-2 py-1 rounded font-mono">
+              https://whatsapp.bibotcrm.it/whatsapp.html?locationId={'{{location.id}}'}
+            </code>
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText('https://whatsapp.bibotcrm.it/whatsapp.html?locationId={{location.id}}')
+                toast.success('Link copied!')
+              }}
+              className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+            >
+              Copy
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   )
