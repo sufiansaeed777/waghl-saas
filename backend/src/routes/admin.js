@@ -197,17 +197,77 @@ router.put('/sub-accounts/:id', async (req, res) => {
 // Toggle sub-account active status
 router.put('/sub-accounts/:id/toggle', async (req, res) => {
   try {
-    const subAccount = await SubAccount.findByPk(req.params.id);
+    const subAccount = await SubAccount.findByPk(req.params.id, {
+      include: [{ model: Customer, as: 'customer', attributes: ['id', 'email', 'name'] }]
+    });
     if (!subAccount) {
       return res.status(404).json({ error: 'Sub-account not found' });
     }
 
+    const wasActive = subAccount.isActive;
     subAccount.isActive = !subAccount.isActive;
     await subAccount.save();
 
-    // Disconnect if deactivated
-    if (!subAccount.isActive) {
-      await whatsappService.disconnect(subAccount.id);
+    // If deactivating, disconnect GHL and WhatsApp
+    if (wasActive && !subAccount.isActive) {
+      // Disconnect WhatsApp
+      try {
+        await whatsappService.disconnect(subAccount.id);
+        logger.info(`Disconnected WhatsApp for sub-account ${subAccount.id} due to deactivation`);
+      } catch (err) {
+        logger.warn(`Failed to disconnect WhatsApp for sub-account ${subAccount.id}:`, err.message);
+      }
+
+      // Disconnect GHL
+      if (subAccount.ghlAccessToken && subAccount.ghlLocationId) {
+        try {
+          await ghlService.uninstallFromLocation(subAccount);
+          logger.info(`Disconnected GHL for sub-account ${subAccount.id} due to deactivation`);
+        } catch (err) {
+          logger.warn(`Failed to disconnect GHL for sub-account ${subAccount.id}:`, err.message);
+        }
+      }
+
+      // Clear GHL tokens
+      await subAccount.update({
+        ghlAccessToken: null,
+        ghlRefreshToken: null,
+        ghlConnected: false
+      });
+
+      // Send deactivation email to customer
+      if (subAccount.customer && subAccount.customer.email) {
+        try {
+          await emailService.sendSubAccountDeactivated(
+            subAccount.customer.email,
+            subAccount.customer.name,
+            subAccount.name,
+            subAccount.ghlLocationId
+          );
+          logger.info(`Sent sub-account deactivation email to ${subAccount.customer.email}`);
+        } catch (err) {
+          logger.warn(`Failed to send deactivation email:`, err.message);
+        }
+      }
+
+      logger.info(`Sub-account ${subAccount.id} deactivated`);
+    }
+
+    // If reactivating, send reactivation email
+    if (!wasActive && subAccount.isActive) {
+      if (subAccount.customer && subAccount.customer.email) {
+        try {
+          await emailService.sendSubAccountReactivated(
+            subAccount.customer.email,
+            subAccount.customer.name,
+            subAccount.name,
+            subAccount.ghlLocationId
+          );
+          logger.info(`Sent sub-account reactivation email to ${subAccount.customer.email}`);
+        } catch (err) {
+          logger.warn(`Failed to send reactivation email:`, err.message);
+        }
+      }
     }
 
     res.json({

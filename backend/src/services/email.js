@@ -347,6 +347,58 @@ class EmailService {
     return this.sendEmail(email, subject, html);
   }
 
+  // Sub-account deactivated
+  async sendSubAccountDeactivated(email, name, subAccountName, locationId) {
+    const subject = `Sub-Account "${subAccountName}" Has Been Deactivated`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #ef4444;">Sub-Account Deactivated</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>One of your sub-accounts has been deactivated by an administrator.</p>
+        <div style="background-color: #fef2f2; border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Sub-Account:</strong> ${subAccountName}</p>
+          ${locationId ? `<p style="margin: 10px 0 0 0;"><strong>Location ID:</strong> ${locationId}</p>` : ''}
+          <p style="margin: 10px 0 0 0;"><strong>Status:</strong> Inactive</p>
+        </div>
+        <p><strong>What this means:</strong></p>
+        <ul>
+          <li>WhatsApp connection has been disconnected</li>
+          <li>GoHighLevel integration has been removed</li>
+          <li>Messages will no longer be sent or received for this sub-account</li>
+        </ul>
+        <p>If you believe this was done in error, please contact support.</p>
+        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+      </div>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
+
+  // Sub-account reactivated
+  async sendSubAccountReactivated(email, name, subAccountName, locationId) {
+    const subject = `Sub-Account "${subAccountName}" Has Been Reactivated`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #22c55e;">Sub-Account Reactivated!</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>One of your sub-accounts has been reactivated.</p>
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Sub-Account:</strong> ${subAccountName}</p>
+          ${locationId ? `<p style="margin: 10px 0 0 0;"><strong>Location ID:</strong> ${locationId}</p>` : ''}
+          <p style="margin: 10px 0 0 0;"><strong>Status:</strong> Active</p>
+        </div>
+        <p>Please note that you may need to:</p>
+        <ul>
+          <li>Reconnect your GoHighLevel location</li>
+          <li>Scan QR code to reconnect your WhatsApp number</li>
+        </ul>
+        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+      </div>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
+
   // Message delivery failed notification
   async sendMessageDeliveryFailed(email, name, subAccountName, toNumber, errorMessage, messageContent = null) {
     const subject = 'Message Delivery Failed - Action Required';
