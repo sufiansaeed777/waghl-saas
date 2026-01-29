@@ -112,10 +112,11 @@ router.put('/:id', authenticateJWT, async (req, res) => {
       return res.status(404).json({ error: 'Sub-account not found' });
     }
 
-    const { name, isActive } = req.body;
+    const { name, isActive, ghlLocationId } = req.body;
 
-    if (name) subAccount.name = name;
+    if (name !== undefined) subAccount.name = name;
     if (typeof isActive === 'boolean') subAccount.isActive = isActive;
+    if (ghlLocationId !== undefined) subAccount.ghlLocationId = ghlLocationId;
 
     await subAccount.save();
 
