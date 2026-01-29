@@ -1,4 +1,4 @@
-# WAGHL SaaS - WhatsApp Bridge
+# GHLWA Connector
 
 A self-hosted WhatsApp SaaS platform using Baileys (unofficial WhatsApp Web bridge). Allows multiple customers to connect WhatsApp accounts via QR code and send/receive messages through API.
 
@@ -64,7 +64,7 @@ PORT=3000
 # Database
 DB_HOST=localhost
 DB_PORT=5432
-DB_NAME=waghl_saas
+DB_NAME=ghlwa_connector
 DB_USER=postgres
 DB_PASSWORD=your_password
 

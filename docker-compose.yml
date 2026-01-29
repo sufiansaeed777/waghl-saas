@@ -3,11 +3,11 @@ version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
-    container_name: waghl-postgres
+    container_name: ghlwa-postgres
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: waghl_saas
+      POSTGRES_DB: ghlwa_connector
     ports:
       - "5432:5432"
     volumes:
@@ -15,7 +15,7 @@ services:
 
   redis:
     image: redis:7-alpine
-    container_name: waghl-redis
+    container_name: ghlwa-redis
     ports:
       - "6379:6379"
     volumes:
@@ -25,7 +25,7 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: waghl-backend
+    container_name: ghlwa-backend
     depends_on:
       - postgres
       - redis
@@ -34,7 +34,7 @@ services:
       PORT: 3000
       DB_HOST: postgres
       DB_PORT: 5432
-      DB_NAME: waghl_saas
+      DB_NAME: ghlwa_connector
       DB_USER: postgres
       DB_PASSWORD: postgres
       REDIS_HOST: redis
@@ -53,7 +53,7 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: waghl-frontend
+    container_name: ghlwa-frontend
     depends_on:
       - backend
     ports:

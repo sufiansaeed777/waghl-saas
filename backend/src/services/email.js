@@ -6,7 +6,7 @@ const logger = require('../utils/logger');
 // Email configuration
 const EMAIL_ENABLED = process.env.EMAIL_ENABLED === 'true';
 const EMAIL_FROM = process.env.EMAIL_FROM || 'noreply@example.com';
-const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'WAGHL SaaS';
+const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'GHLWA Connector';
 
 // Email provider type
 let emailProvider = null; // 'mailgun-api', 'smtp', or 'sendgrid'
@@ -148,7 +148,7 @@ class EmailService {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #0f766e;">New Login Detected</h2>
         <p>Hi ${name || 'there'},</p>
-        <p>We detected a new login to your WAGHL account:</p>
+        <p>We detected a new login to your GHLWA Connector account:</p>
         <table style="border-collapse: collapse; margin: 20px 0;">
           <tr>
             <td style="padding: 8px; border: 1px solid #ddd; font-weight: bold;">Time</td>
@@ -164,7 +164,7 @@ class EmailService {
           </tr>
         </table>
         <p>If this wasn't you, please reset your password immediately.</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -187,7 +187,7 @@ class EmailService {
         <p>Or copy this link: <a href="${resetUrl}">${resetUrl}</a></p>
         <p>This link expires in 1 hour.</p>
         <p>If you didn't request this, you can safely ignore this email.</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -207,7 +207,7 @@ class EmailService {
           <p style="margin: 10px 0 0 0;"><strong>Sub-Account:</strong> ${subAccountName || 'N/A'}</p>
         </div>
         <p>Messages sent as SMS in GoHighLevel will now be delivered via WhatsApp.</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -229,7 +229,7 @@ class EmailService {
         </div>
         <p>Messages will not be delivered via WhatsApp until you reconnect.</p>
         <p>Please log in to your dashboard and scan the QR code to reconnect.</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -238,10 +238,10 @@ class EmailService {
 
   // Welcome email
   async sendWelcome(email, name) {
-    const subject = 'Welcome to WAGHL SaaS!';
+    const subject = 'Welcome to GHLWA Connector!';
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #0f766e;">Welcome to WAGHL!</h2>
+        <h2 style="color: #0f766e;">Welcome to GHLWA Connector!</h2>
         <p>Hi ${name || 'there'},</p>
         <p>Thank you for signing up! You're now ready to connect your WhatsApp and start sending messages through GoHighLevel.</p>
         <h3>Getting Started:</h3>
@@ -252,7 +252,7 @@ class EmailService {
           <li>Start sending messages!</li>
         </ol>
         <p>If you have any questions, don't hesitate to reach out to our support team.</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -272,7 +272,7 @@ class EmailService {
           <p style="margin: 10px 0 0 0;"><strong>Status:</strong> Active</p>
         </div>
         <p>You now have full access to all features. Connect your WhatsApp and start sending messages!</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -289,7 +289,7 @@ class EmailService {
         <p>Your subscription has been cancelled. Your access to premium features will end at the end of your current billing period.</p>
         <p>If this was a mistake or you'd like to resubscribe, you can do so from your dashboard at any time.</p>
         <p>We're sorry to see you go. If you have any feedback, we'd love to hear it.</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -303,7 +303,7 @@ class EmailService {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #ef4444;">Account Deactivated</h2>
         <p>Hi ${name || 'there'},</p>
-        <p>Your WAGHL account has been deactivated by an administrator.</p>
+        <p>Your GHLWA Connector account has been deactivated by an administrator.</p>
         <div style="background-color: #fef2f2; border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin: 20px 0;">
           <p style="margin: 0;"><strong>Status:</strong> Inactive</p>
           ${reason ? `<p style="margin: 10px 0 0 0;"><strong>Reason:</strong> ${reason}</p>` : ''}
@@ -316,7 +316,7 @@ class EmailService {
           <li>Messages will no longer be sent or received</li>
         </ul>
         <p>If you believe this was done in error, please contact support.</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -330,7 +330,7 @@ class EmailService {
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #22c55e;">Account Reactivated!</h2>
         <p>Hi ${name || 'there'},</p>
-        <p>Great news! Your WAGHL account has been reactivated.</p>
+        <p>Great news! Your GHLWA Connector account has been reactivated.</p>
         <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
           <p style="margin: 0;"><strong>Status:</strong> Active</p>
         </div>
@@ -340,7 +340,7 @@ class EmailService {
           <li>Scan QR codes to reconnect your WhatsApp numbers</li>
         </ul>
         <p>Welcome back!</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -367,7 +367,7 @@ class EmailService {
           <li>Messages will no longer be sent or received for this sub-account</li>
         </ul>
         <p>If you believe this was done in error, please contact support.</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -392,7 +392,7 @@ class EmailService {
           <li>Reconnect your GoHighLevel location</li>
           <li>Scan QR code to reconnect your WhatsApp number</li>
         </ul>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 
@@ -421,7 +421,7 @@ class EmailService {
           <li>Rate limiting by WhatsApp</li>
         </ul>
         <p>Please check your dashboard and try again.</p>
-        <p style="color: #666; font-size: 12px;">- The WAGHL Team</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>
     `;
 

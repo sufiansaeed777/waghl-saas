@@ -587,7 +587,7 @@ function renderQRPage(subAccount, status, token) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WhatsApp Connection - ${subAccount.name || 'WAGHL'}</title>
+  <title>WhatsApp Connection - ${subAccount.name || 'GHLWA Connector'}</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -949,7 +949,7 @@ function renderErrorPage(message) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Error - WAGHL</title>
+  <title>Error - GHLWA Connector</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

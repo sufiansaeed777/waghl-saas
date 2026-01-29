@@ -256,7 +256,7 @@ class GHLService {
         contact = await this.createContact(customer, locationId, {
           phone: phoneNumber,
           name: name || `WhatsApp ${phoneNumber}`,
-          source: 'WAGHL WhatsApp'
+          source: 'GHLWA Connector'
         });
         logger.info(`Created new GHL contact for ${phoneNumber}`);
       }

@@ -1,4 +1,4 @@
-# WAGHL SaaS - Setup & Operations Guide
+# GHLWA Connector - Setup & Operations Guide
 
 ## Table of Contents
 

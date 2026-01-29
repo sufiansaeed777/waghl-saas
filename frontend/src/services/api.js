@@ -20,10 +20,18 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const currentPath = window.location.pathname
+    const isAuthPage = currentPath === '/login' || currentPath === '/register'
+
+    // Handle 401 (Unauthorized) - invalid/expired token
+    if (error.response?.status === 401 && !isAuthPage) {
       localStorage.removeItem('token')
       window.location.href = '/login'
     }
+
+    // Handle 403 (Forbidden) - account deactivated, insufficient permissions
+    // Don't redirect, just let the error propagate to show the message
+
     return Promise.reject(error)
   }
 )

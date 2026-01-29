@@ -1,4 +1,4 @@
-# WAGHL SaaS - API Documentation
+# GHLWA Connector - API Documentation
 
 Base URL: `https://yourdomain.com/api`
 

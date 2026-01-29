@@ -69,7 +69,7 @@ router.post('/login', async (req, res) => {
     }
 
     if (!customer.isActive) {
-      return res.status(401).json({ error: 'Account is inactive' });
+      return res.status(403).json({ error: 'Your account has been deactivated by an administrator. Please contact support for assistance.' });
     }
 
     const token = generateToken(customer);

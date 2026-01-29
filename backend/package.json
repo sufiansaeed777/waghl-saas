@@ -1,15 +1,15 @@
 {
-  "name": "waghl-saas-backend",
+  "name": "ghlwa-connector-backend",
   "version": "1.0.0",
-  "description": "WhatsApp SaaS Bridge using Baileys",
+  "description": "GHLWA Connector - WhatsApp integration for GoHighLevel",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "pm2:start": "pm2 start ecosystem.config.js --env production",
-    "pm2:stop": "pm2 stop waghl-saas",
-    "pm2:restart": "pm2 restart waghl-saas",
-    "pm2:logs": "pm2 logs waghl-saas",
+    "pm2:stop": "pm2 stop ghlwa-connector",
+    "pm2:restart": "pm2 restart ghlwa-connector",
+    "pm2:logs": "pm2 logs ghlwa-connector",
     "pm2:status": "pm2 status",
     "db:migrate": "npx sequelize-cli db:migrate",
     "db:seed": "npx sequelize-cli db:seed:all"

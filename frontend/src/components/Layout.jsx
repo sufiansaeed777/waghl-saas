@@ -26,8 +26,7 @@ export default function Layout() {
       {/* Sidebar */}
       <aside className="fixed inset-y-0 left-0 w-64 bg-primary-500 text-white">
         <div className="p-6">
-          <h1 className="text-2xl font-bold">WAGHL SaaS</h1>
-          <p className="text-primary-100 text-sm mt-1">WhatsApp Bridge</p>
+          <h1 className="text-2xl font-bold">GHLWA Connector</h1>
         </div>
 
         <nav className="mt-6">

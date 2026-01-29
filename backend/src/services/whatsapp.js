@@ -68,7 +68,7 @@ class WhatsAppService {
         auth: state,
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
-        browser: ['WAGHL SaaS', 'Chrome', '120.0.0'],
+        browser: ['GHLWA Connector', 'Chrome', '120.0.0'],
         connectTimeoutMs: 60000,
         qrTimeout: 60000
       });

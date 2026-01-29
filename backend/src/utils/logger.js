@@ -15,7 +15,7 @@ const logger = winston.createLogger({
     winston.format.errors({ stack: true }),
     winston.format.json()
   ),
-  defaultMeta: { service: 'waghl-saas' },
+  defaultMeta: { service: 'ghlwa-connector' },
   transports: [
     new winston.transports.File({ filename: path.join(logsDir, 'error.log'), level: 'error' }),
     new winston.transports.File({ filename: path.join(logsDir, 'combined.log') }),

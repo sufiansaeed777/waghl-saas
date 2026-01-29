@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'waghl-saas',
+      name: 'ghlwa-connector',
       script: 'src/index.js',
       instances: 1, // Single instance to maintain WhatsApp session state
       exec_mode: 'fork',

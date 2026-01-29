@@ -1,0 +1,746 @@
+================================================================================
+GHLWA CONNECTOR - COMPLETE PROJECT UNDERSTANDING
+================================================================================
+Date: 2026-01-30
+Project: GHLWA Connector (formerly WAGHL SaaS)
+Repository: https://github.com/sufiansaeed777/waghl-saas
+Production Server: 45.77.88.99 (Cloudways)
+
+================================================================================
+1. PROJECT OVERVIEW
+================================================================================
+
+GHLWA Connector is a multi-tenant SaaS platform that bridges WhatsApp with
+GoHighLevel (GHL) CRM. It allows businesses to:
+- Send/receive WhatsApp messages from their GHL accounts
+- Manage multiple WhatsApp numbers per customer
+- Process payments for WhatsApp access via Stripe
+- Provide webhooks for message events
+- Embed WhatsApp widgets in GHL custom pages
+
+Business Model:
+- €29/month per WhatsApp connection (Standard pricing)
+- €19/month per connection for 10+ slots (Volume pricing)
+- Stripe handles all billing and subscriptions
+- Admin can gift free access to specific customers/sub-accounts
+
+================================================================================
+2. ARCHITECTURE
+================================================================================
+
+Technology Stack:
+
+Backend:
+- Node.js 18+ (Runtime)
+- Express.js 4.21+ (Web framework)
+- Sequelize 6.37+ (ORM)
+- PostgreSQL 15+ / MySQL (Database)
+- Redis 7+ (Cache & sessions)
+- @whiskeysockets/baileys 6.5.0 (WhatsApp integration)
+- Stripe 17.4+ (Payments)
+- JWT 9.0+ (Authentication)
+- bcryptjs 2.4+ (Password hashing)
+- Winston 3.17+ (Logging)
+- Nodemailer 7.0+ (Email)
+- PM2 (Process management)
+
+Frontend:
+- React 18.3+
+- Vite 6.0+ (Build tool)
+- React Router 7.1+
+- Tailwind CSS 3.4+
+- Axios 1.7+ (HTTP client)
+- React Hot Toast 2.4+ (Notifications)
+
+Project Structure:
+waghl-saas/
+├── backend/
+│   ├── src/
+│   │   ├── index.js (Main entry point - 173 lines)
+│   │   ├── config/ (Database, Redis config)
+│   │   ├── models/ (Sequelize models - 4 models)
+│   │   ├── routes/ (8 route files)
+│   │   ├── services/ (6 service files)
+│   │   ├── middleware/ (Auth, validation)
+│   │   └── utils/ (Logger utilities)
+│   ├── sessions/ (WhatsApp session storage)
+│   ├── ecosystem.config.js (PM2 config)
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── pages/ (8 page components)
+│   │   ├── components/ (Reusable UI)
+│   │   ├── contexts/ (AuthContext)
+│   │   ├── services/ (API client)
+│   │   └── App.jsx (Router)
+│   └── package.json
+├── docker-compose.yml
+├── README.md
+├── SETUP.md
+└── API.md
+
+================================================================================
+3. DATABASE SCHEMA
+================================================================================
+
+Tables & Relationships:
+
+Customer (customers table)
+- id: UUID (PK)
+- email: STRING (unique)
+- password: STRING (bcrypt hashed)
+- name, company: STRING
+- role: ENUM('admin', 'customer')
+- isActive: BOOLEAN (default: true)
+- apiKey: STRING (unique, auto-generated)
+- stripeCustomerId, subscriptionId: STRING
+- subscriptionStatus: ENUM('active', 'inactive', 'trialing', 'past_due', 'canceled', 'canceling')
+- planType: ENUM('free', 'standard', 'volume')
+- subscriptionQuantity: INTEGER
+- hasUnlimitedAccess: BOOLEAN (admin-granted)
+- ghlAccessToken, ghlRefreshToken: TEXT (encrypted)
+- ghlTokenExpiresAt: DATE
+- ghlCompanyId, ghlUserId: STRING
+- ghlConnected: BOOLEAN
+- createdAt, updatedAt: DATE
+
+SubAccount (sub_accounts table)
+- id: UUID (PK)
+- customerId: UUID (FK → Customer)
+- name: STRING
+- phoneNumber: STRING (auto-populated after WhatsApp connection)
+- apiKey: STRING (unique)
+- status: ENUM('disconnected', 'connecting', 'connected', 'qr_ready')
+- sessionData: TEXT (Baileys credentials)
+- lastConnected: DATE
+- isActive: BOOLEAN (default: true)
+- isPaid: BOOLEAN (default: false)
+- isGifted: BOOLEAN (default: false) - admin can gift free access
+- ghlLocationId, ghlLocationName: STRING
+- ghlConnected: BOOLEAN
+- ghlAccessToken, ghlRefreshToken: TEXT
+- ghlTokenExpiresAt: DATE
+- createdAt, updatedAt: DATE
+
+Message (messages table)
+- id: UUID (PK)
+- subAccountId: UUID (FK → SubAccount)
+- messageId: STRING (WhatsApp message ID)
+- direction: ENUM('inbound', 'outbound')
+- fromNumber, toNumber: STRING
+- messageType: ENUM('text', 'image', 'document', 'audio', 'video')
+- content: TEXT
+- mediaUrl: STRING
+- status: ENUM('pending', 'sent', 'delivered', 'read', 'failed')
+- errorMessage: TEXT
+- metadata: JSON
+- createdAt, updatedAt: DATE
+
+Webhook (webhooks table)
+- id: UUID (PK)
+- subAccountId: UUID (FK → SubAccount, unique - 1 webhook per sub-account)
+- url: STRING (customer's HTTP endpoint)
+- secret: STRING (HMAC signature key)
+- events: JSON array (['message.received', 'message.sent', etc.])
+- isActive: BOOLEAN (default: true)
+- lastTriggered: DATE
+- failureCount: INTEGER (auto-disable after 10 failures)
+- createdAt, updatedAt: DATE
+
+Relationships:
+Customer ──(1:N)─→ SubAccount
+SubAccount ──(1:N)─→ Message
+SubAccount ──(1:1)─→ Webhook
+
+================================================================================
+4. AUTHENTICATION & AUTHORIZATION
+================================================================================
+
+Two Authentication Methods:
+
+1. JWT (Dashboard/Frontend)
+   - Login: POST /api/auth/login { email, password }
+   - Returns: { token, customer }
+   - Token stored in localStorage
+   - All requests include: Authorization: Bearer <token>
+   - Middleware: authenticateJWT
+   - Expiry: 7 days (default)
+
+2. API Key (External Integrations)
+   - Header: X-API-Key: <key>
+   - Two types:
+     a) Customer API Key (access all sub-accounts)
+     b) Sub-Account API Key (access single sub-account)
+   - Auto-generated (32-byte hex)
+   - Middleware: authenticateApiKey
+
+Authorization Levels:
+1. Admin Access: requireAdmin (role === 'admin')
+2. Active Subscription: requireActiveSubscription
+3. Paid Sub-Account: requirePaidSubAccount (isPaid || isGifted || hasUnlimitedAccess)
+4. Ownership: subAccount.customerId === req.customer.id
+
+Active/Inactive System:
+- Customer.isActive: Admin can deactivate entire account
+  → Blocks login, API access
+  → Disconnects all WhatsApp sessions
+  → Removes all GHL integrations
+
+- SubAccount.isActive: Admin can deactivate individual sub-account
+  → Disconnects WhatsApp
+  → Removes GHL integration
+
+- Both checks happen at middleware level
+
+================================================================================
+5. CORE FEATURES
+================================================================================
+
+Feature 1: WhatsApp Integration (Baileys)
+------------------------------------------
+File: backend/src/services/whatsapp.js (512 lines)
+
+How it works:
+1. Session Storage: sessions/{subAccountId}/creds.json
+2. Connection Process:
+   - POST /api/whatsapp/:subAccountId/connect
+   - Load Baileys auth state
+   - Create makeWASocket()
+   - Generate QR code
+   - Store in qrCodes Map
+   - Update status to 'qr_ready'
+
+3. QR Code Scan:
+   - Frontend polls GET /api/whatsapp/:subAccountId/qr
+   - User scans with phone
+   - Socket emits 'connection.update' with 'open'
+   - Extract phone number
+   - Update status to 'connected'
+
+4. In-Memory Connection Map:
+   - Map<subAccountId, BaileysSocket>
+   - Keeps sockets alive for sending
+
+5. Message Sending:
+   - POST /api/whatsapp/:subAccountId/send
+   - Get socket from connections Map
+   - socket.sendMessage(jid, { text })
+   - Store in Message table
+   - Trigger webhook 'message.sent'
+
+6. Message Reception:
+   - Socket event: 'messages.upsert'
+   - Extract sender, content, type
+   - Save to Message table
+   - Trigger webhook 'message.received'
+
+7. Session Restoration (server restart):
+   - index.js calls whatsappService.restoreSessions()
+   - Find all SubAccounts with status='connected'
+   - Reload each session from disk
+   - Reconnect to WhatsApp
+
+Feature 2: GoHighLevel Integration
+-----------------------------------
+File: backend/src/services/ghl.js (490 lines)
+
+OAuth Flow:
+1. GET /api/ghl/auth-url/:subAccountId
+   - Generate state (base64 encoded: { customerId, subAccountId, timestamp })
+   - Build OAuth URL to GHL marketplace
+   - Return URL to frontend
+
+2. User authorizes at GHL
+   - Redirects to /api/ghl/callback?code=...&state=...
+
+3. Token Exchange:
+   - Decode state
+   - POST to GHL token endpoint
+   - Exchange code for access_token, refresh_token
+   - Store in SubAccount: ghlAccessToken, ghlRefreshToken, ghlLocationId
+   - Set ghlConnected = true
+
+4. Token Refresh:
+   - Auto-refresh before expiry
+   - Update stored tokens
+
+5. API Operations:
+   - Get/Create Contacts
+   - Send Messages to GHL
+   - Find or Create Contact
+   - Uninstall integration
+
+Feature 3: Stripe Billing
+--------------------------
+File: backend/src/services/stripe.js (393 lines)
+
+Checkout Flow:
+1. POST /api/billing/checkout/:subAccountId { quantity }
+   - Create/get Stripe customer
+   - Create checkout session
+   - Return URL
+   - Frontend redirects to Stripe
+
+2. User pays at Stripe Checkout
+
+3. Stripe Webhook:
+   - POST /api/stripe/webhook
+   - Verify signature
+   - Handle events:
+     * customer.subscription.created
+     * customer.subscription.updated
+     * customer.subscription.deleted
+     * invoice.payment_failed
+   - Update Customer.subscriptionStatus
+   - Mark SubAccount.isPaid = true
+
+4. Pricing Logic:
+   - Standard: €29/month (STRIPE_PRICE_ID)
+   - Volume: €19/month for 10+ slots (STRIPE_VOLUME_PRICE_ID)
+   - Proration handled by Stripe
+
+Feature 4: Webhook System
+--------------------------
+File: backend/src/services/webhook.js
+
+Configuration:
+- POST /api/webhooks/:subAccountId
+- Body: { url, secret, events[] }
+- One webhook per sub-account
+
+Triggering:
+- webhookService.trigger(subAccountId, event, data)
+- Build payload: { event, subAccountId, timestamp, data }
+- Generate HMAC-SHA256 signature
+- POST to webhook.url with X-Webhook-Signature header
+- Track failures (auto-disable after 10)
+
+Events:
+- message.received
+- message.sent
+- connection.status
+- connection.qr
+
+Feature 5: Embed System (GHL Custom Pages)
+-------------------------------------------
+File: backend/src/routes/embed.js (1076 lines)
+
+Flow:
+1. GET /api/embed/token-by-location/:locationId
+   - Find SubAccount by ghlLocationId
+   - Generate embed token (JWT, 1 hour)
+   - Return token
+
+2. GHL Custom Page:
+   - Load iframe: /api/embed/whatsapp/:subAccountId?token=...
+   - Verify token
+   - Render full WhatsApp widget HTML
+   - Include QR code, status, messaging UI
+   - JavaScript polls for updates
+   - Embedded in GHL location
+
+Feature 6: Email Notifications
+-------------------------------
+File: backend/src/services/email.js (432 lines)
+
+Email Templates (12 total):
+- sendLoginNotification
+- sendPasswordReset
+- sendWhatsAppConnected
+- sendWhatsAppDisconnected
+- sendWelcome
+- sendSubscriptionActivated
+- sendSubscriptionCancelled
+- sendAccountDeactivated
+- sendAccountReactivated
+- sendSubAccountDeactivated
+- sendSubAccountReactivated
+- sendMessageDeliveryFailed
+
+Providers Supported:
+- Mailgun (SMTP or API)
+- SendGrid (SMTP)
+- Generic SMTP (Gmail, etc.)
+
+All emails now branded as "GHLWA Connector Team"
+
+================================================================================
+6. API ROUTES
+================================================================================
+
+Authentication (/api/auth):
+- POST /register - Create account
+- POST /login - Email/password login
+- GET /me - Get current user
+- POST /refresh-api-key - Generate new API key
+- POST /forgot-password - Request reset
+- POST /reset-password - Reset with token
+- POST /change-password - Change password
+
+Sub-Accounts (/api/sub-accounts):
+- GET / - List all
+- POST / - Create new
+- GET /:id - Get details
+- PUT /:id - Update
+- DELETE /:id - Delete
+
+WhatsApp (/api/whatsapp):
+- POST /:subAccountId/connect - Start connection
+- GET /:subAccountId/qr - Get QR code
+- GET /:subAccountId/status - Get status
+- POST /:subAccountId/disconnect - Disconnect
+- POST /:subAccountId/send - Send message (JWT + Paid)
+- GET /:subAccountId/messages - Message history
+- POST /send - Send message (API Key)
+
+Webhooks (/api/webhooks):
+- GET /:subAccountId - Get config
+- POST /:subAccountId - Create/update
+- DELETE /:subAccountId - Delete
+- POST /:subAccountId/test - Test delivery
+
+Billing (/api/billing):
+- POST /checkout/:subAccountId - Create checkout
+- GET /portal - Customer portal
+- GET /subscription - Subscription details
+
+GoHighLevel (/api/ghl):
+- GET /auth-url/:subAccountId - Get OAuth URL
+- GET /callback - OAuth callback
+- POST /disconnect/:subAccountId - Disconnect
+- GET /locations - List locations
+
+Admin (/api/admin):
+- GET /customers - List customers
+- PUT /customers/:id/toggle - Activate/deactivate
+- PUT /customers/:id/access - Grant unlimited access
+- DELETE /customers/:id - Delete customer
+- GET /sub-accounts - List sub-accounts
+- PUT /sub-accounts/:id - Update
+- PUT /sub-accounts/:id/toggle - Activate/deactivate
+- PUT /sub-accounts/:id/gift - Gift free access
+- PUT /sub-accounts/:id/payment - Toggle payment
+- DELETE /sub-accounts/:id - Delete
+- GET /stats - Dashboard stats
+- POST /ghl/bulk-uninstall - Uninstall GHL from all
+- POST /ghl/uninstall/:id - Uninstall from one
+
+Embed (/api/embed):
+- GET /whatsapp/:subAccountId - Widget (Embed Token)
+- GET /token-by-location/:locationId - Get token
+- GET /session - Get/create session
+
+Stripe Webhook:
+- POST /stripe/webhook - Handle Stripe events (Signature auth)
+
+================================================================================
+7. FRONTEND STRUCTURE
+================================================================================
+
+Pages (8 total):
+1. Landing.jsx - Public landing page
+2. Login.jsx - Email/password login
+3. Register.jsx - New customer registration
+4. Dashboard.jsx - Overview, stats
+5. SubAccounts.jsx - List all WhatsApp connections
+6. SubAccountDetail.jsx - WhatsApp connection, QR, messages
+7. Settings.jsx - Profile, API keys, billing
+8. AdminDashboard.jsx - Admin panel
+
+Routing:
+- Public: /, /login, /register
+- Protected (JWT): /dashboard, /sub-accounts, /sub-accounts/:id, /settings
+- Admin only: /admin
+
+AuthContext:
+- user: Customer | null
+- loading: boolean
+- login(email, password)
+- register(userData)
+- logout()
+- fetchUser()
+
+Storage:
+- localStorage: token (JWT)
+
+API Client (services/api.js):
+- Axios instance
+- Base URL: /api
+- Request interceptor: Add JWT token
+- Response interceptor: Handle 401/403 errors (fixed to not redirect on auth pages)
+
+================================================================================
+8. SECURITY IMPLEMENTATION
+================================================================================
+
+1. Password Security:
+   - Bcrypt hashing (12 rounds)
+   - Never stored plain text
+   - Excluded from JSON responses
+
+2. JWT Tokens:
+   - HS256 algorithm
+   - 7-day expiration
+   - Verified on every request
+
+3. API Keys:
+   - 32-byte random hex
+   - Unique per customer/sub-account
+   - Can be regenerated
+
+4. CORS:
+   - Whitelist: Frontend + GHL domains
+   - Credentials: true
+
+5. Helmet (Security Headers):
+   - CSP configured
+   - Frame-ancestors for GHL embedding
+   - X-Frame-Options disabled (using CSP instead)
+
+6. Rate Limiting:
+   - 1000 req/15min per IP
+   - Excludes: webhooks, callbacks, embed, status
+
+7. Webhook Signatures:
+   - HMAC-SHA256
+   - Shared secret
+
+8. Input Validation:
+   - Email format
+   - Phone number sanitization
+   - Sequelize prevents SQL injection
+   - React prevents XSS
+
+9. Sensitive Data:
+   - GHL tokens excluded from API responses
+   - Session data excluded
+   - Password excluded
+
+================================================================================
+9. DEPLOYMENT (CLOUDWAYS)
+================================================================================
+
+Production Server:
+- IP: 45.77.88.99
+- User: master_ahvvyhwncx
+- Backend: /home/master/waghl/backend
+- Frontend: /home/master/waghl/frontend
+- Public HTML: /home/master/applications/xhgrnnzevy/public_html/
+- PM2 Process: waghl-saas (should be renamed to ghlwa-connector)
+- Restarts: 462+ (as of last check)
+
+Deployment Commands:
+# Backend
+cd /home/master/waghl/backend && git pull && pm2 restart all
+
+# Frontend
+cd /home/master/waghl/frontend && git pull && npm run build && cp -r dist/* /home/master/applications/xhgrnnzevy/public_html/
+
+# Full deployment
+cd /home/master/waghl/backend && git pull && pm2 restart all && cd /home/master/waghl/frontend && git pull && npm run build && cp -r dist/* /home/master/applications/xhgrnnzevy/public_html/
+
+# Database sync (if schema changes)
+cd /home/master/waghl/backend
+node -e "require('./src/models').sequelize.sync({ alter: true })"
+pm2 restart all
+
+PM2 Commands:
+pm2 list
+pm2 logs waghl-saas
+pm2 restart waghl-saas
+pm2 stop waghl-saas
+pm2 start ecosystem.config.js --env production
+pm2 save
+pm2 startup
+
+Environment Variables (Required):
+NODE_ENV=production
+PORT=3000
+DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, DB_DIALECT
+REDIS_HOST, REDIS_PORT
+JWT_SECRET, JWT_EXPIRES_IN
+STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_ID
+GHL_CLIENT_ID, GHL_CLIENT_SECRET, GHL_REDIRECT_URI, GHL_SCOPES
+EMAIL_ENABLED, EMAIL_FROM, EMAIL_FROM_NAME
+MAILGUN_API_KEY, MAILGUN_DOMAIN (or SENDGRID_API_KEY, or SMTP_*)
+FRONTEND_URL
+
+================================================================================
+10. KEY WORKFLOWS
+================================================================================
+
+New Customer Registration:
+1. Visit landing page
+2. Click "Register"
+3. Fill: email, password, name, company
+4. POST /api/auth/register
+5. Create Customer, generate JWT
+6. Send welcome email
+7. Redirect to /dashboard
+
+Create & Connect WhatsApp:
+1. Customer logged in
+2. Go to /sub-accounts
+3. Click "Create Sub-Account"
+4. POST /api/sub-accounts { name }
+5. Verify available slots
+6. Create SubAccount
+7. Click "Connect WhatsApp"
+8. POST /api/whatsapp/:id/connect
+9. Baileys generates QR
+10. Frontend displays QR
+11. User scans with phone
+12. Connection established
+13. Status → 'connected'
+14. Phone number saved
+
+Subscribe to Plan:
+1. Create first sub-account (unpaid)
+2. System requires payment
+3. Click "Subscribe"
+4. POST /api/billing/checkout/:id
+5. Redirect to Stripe
+6. Enter payment
+7. Stripe webhook → update isPaid
+8. Can now connect WhatsApp
+
+Send WhatsApp Message:
+1. External system has API key
+2. POST /api/whatsapp/send
+   Headers: X-API-Key
+   Body: { to, message, type }
+3. Authenticate API key
+4. Verify connected & paid
+5. Send via Baileys socket
+6. Store in Message table
+7. Trigger webhook
+8. Return success
+
+Receive WhatsApp Message:
+1. Incoming message to business
+2. Baileys socket receives event
+3. Extract sender, content
+4. Create Message record (inbound)
+5. Trigger webhook 'message.received'
+6. POST to customer's webhook URL
+7. Include HMAC signature
+8. Customer system processes
+
+Admin Gift Feature:
+1. Admin logs in
+2. Go to /admin
+3. Find sub-account
+4. Click "Gift"
+5. PUT /api/admin/sub-accounts/:id/gift
+6. Set isGifted = true
+7. No payment required
+
+Server Restart & Recovery:
+1. PM2 detects crash
+2. Auto-restart process
+3. index.js starts
+4. Database connects
+5. Redis connects
+6. Server listening
+7. whatsappService.restoreSessions()
+8. Find connected SubAccounts
+9. Reload each Baileys session
+10. Reconnect to WhatsApp
+11. Messages resume flowing
+
+================================================================================
+11. RECENT CHANGES MADE
+================================================================================
+
+Date: 2026-01-30
+
+Change 1: Rebranding from "WAGHL SaaS" to "GHLWA Connector"
+-----------------------------------------------------------
+Files Updated:
+- backend/src/services/email.js (all email templates)
+- backend/src/services/whatsapp.js (browser identification)
+- backend/src/services/ghl.js (contact source)
+- backend/src/utils/logger.js (service name)
+- backend/src/routes/embed.js (page titles)
+- backend/src/config/database.js (default DB name)
+- backend/.env.example (EMAIL_FROM_NAME, DB_NAME)
+- backend/package.json (name, PM2 scripts)
+- backend/ecosystem.config.js (PM2 app name)
+- frontend/src/components/Layout.jsx (sidebar title, removed "WhatsApp Bridge" subtitle)
+- frontend/src/pages/Register.jsx (app name)
+- frontend/src/pages/Login.jsx (app name)
+- frontend/index.html (page title)
+- frontend/public/setup.html (page titles)
+- frontend/package.json (name)
+- docker-compose.yml (all container names, DB names)
+- README.md, API.md, SETUP.md (documentation titles)
+
+Changes:
+- "WAGHL SaaS" → "GHLWA Connector"
+- "WhatsApp Bridge" → removed (was subtitle in sidebar)
+- "The WAGHL Team" → "The GHLWA Connector Team" (all emails)
+- "waghl-saas" → "ghlwa-connector" (package names, PM2 process)
+- "waghl_saas" → "ghlwa_connector" (database name)
+
+Note: Internal localStorage keys NOT changed to avoid breaking existing installations:
+- waghl_token
+- waghl_locationId
+
+Change 2: Login Error Message Fix
+----------------------------------
+Files Updated:
+- frontend/src/services/api.js (API interceptor)
+- backend/src/routes/auth.js (error status codes)
+
+Issues Fixed:
+1. Error messages not displaying on login page
+   - Problem: API interceptor caught 401 errors and redirected immediately
+   - Fix: Check if already on /login or /register before redirecting
+
+2. Inactive account error message
+   - Changed: Status 401 → 403 (Forbidden)
+   - Message: "Account is inactive" → "Your account has been deactivated by an administrator. Please contact support for assistance."
+
+3. Wrong credentials error
+   - Still returns: "Invalid credentials" (401)
+
+Now works correctly:
+- Wrong email/password: Shows "Invalid credentials"
+- Deactivated account: Shows "Your account has been deactivated..."
+- Already logged in with expired token: Redirects to login (not on auth pages)
+
+================================================================================
+12. TODO / FUTURE IMPROVEMENTS
+================================================================================
+
+1. Update PM2 process name on production server:
+   - Current: waghl-saas
+   - Should be: ghlwa-connector
+
+2. Consider encryption for sensitive tokens:
+   - ghlAccessToken, ghlRefreshToken currently stored as TEXT
+   - Should use encryption at rest
+
+3. Session cleanup job:
+   - Remove old WhatsApp session folders for deleted sub-accounts
+
+4. Webhook retry logic:
+   - Currently fails after 1 attempt
+   - Could implement exponential backoff
+
+5. Message queue for async processing:
+   - Large volume of messages could overwhelm
+   - Consider Bull/BullMQ with Redis
+
+6. Rate limiting per customer:
+   - Currently per IP
+   - Could add per-customer/sub-account limits
+
+7. Analytics & monitoring:
+   - Message volume tracking
+   - Connection uptime stats
+   - Revenue metrics
+
+================================================================================
+END OF DOCUMENT
+================================================================================
