@@ -296,15 +296,17 @@ class GHLService {
   // Send message to GHL conversation (for logging purposes)
   async addMessageToConversation(customer, conversationId, message, direction = 'inbound') {
     try {
-      const response = await this.apiRequest(customer, 'POST', `/conversations/messages`, {
+      // GHL API uses numeric type: 1 = inbound, 2 = outbound
+      const response = await this.apiRequest(customer, 'POST', `/conversations/messages/inbound`, {
         conversationId,
-        type: direction === 'inbound' ? 'TYPE_INBOUND' : 'TYPE_OUTBOUND',
+        type: 'SMS',
         message,
-        contentType: 'text/plain'
+        direction: direction
       });
+      logger.info(`Added ${direction} message to GHL conversation ${conversationId}`);
       return response;
     } catch (error) {
-      logger.error('GHL add message error:', error);
+      logger.error('GHL add message error:', error.response?.data || error.message);
       // Don't throw - message logging to GHL is not critical
       return null;
     }
