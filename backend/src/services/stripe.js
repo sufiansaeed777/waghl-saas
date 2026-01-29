@@ -194,7 +194,8 @@ class StripeService {
   // Get subscription info for customer
   async getSubscriptionInfo(customer) {
     try {
-      const subAccountCount = await SubAccount.count({ where: { customerId: customer.id } });
+      // Count only non-gifted sub-accounts (gifted ones don't use slots)
+      const subAccountCount = await SubAccount.count({ where: { customerId: customer.id, isGifted: false } });
       const subscriptionQuantity = customer.subscriptionQuantity || 0;
       const availableSlots = subscriptionQuantity - subAccountCount;
 
@@ -342,10 +343,10 @@ class StripeService {
               planType: null
             });
 
-            // Deactivate all sub-accounts
+            // Deactivate all sub-accounts (except gifted ones)
             await SubAccount.update(
               { isPaid: false },
-              { where: { customerId: customer.id } }
+              { where: { customerId: customer.id, isGifted: false } }
             );
 
             // Send subscription cancelled email (only if not already sent during 'canceling' status)

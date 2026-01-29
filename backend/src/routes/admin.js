@@ -280,6 +280,41 @@ router.put('/sub-accounts/:id/toggle', async (req, res) => {
   }
 });
 
+// Gift/ungift free access to a specific sub-account
+router.put('/sub-accounts/:id/gift', async (req, res) => {
+  try {
+    const subAccount = await SubAccount.findByPk(req.params.id, {
+      include: [{ model: Customer, as: 'customer', attributes: ['id', 'email', 'name'] }]
+    });
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // Toggle gift status
+    const wasGifted = subAccount.isGifted;
+    subAccount.isGifted = !subAccount.isGifted;
+
+    // If gifting, also set isPaid to true
+    if (subAccount.isGifted) {
+      subAccount.isPaid = true;
+    }
+
+    await subAccount.save();
+
+    logger.info(`Admin ${wasGifted ? 'removed gift from' : 'gifted'} sub-account ${subAccount.id}`);
+
+    res.json({
+      message: subAccount.isGifted
+        ? 'Free unlimited access granted to this sub-account'
+        : 'Free access removed from this sub-account',
+      subAccount
+    });
+  } catch (error) {
+    logger.error('Admin gift sub-account error:', error);
+    res.status(500).json({ error: 'Failed to update sub-account gift status' });
+  }
+});
+
 // Delete customer (admin cannot delete itself)
 router.delete('/customers/:id', async (req, res) => {
   try {

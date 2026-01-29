@@ -47,6 +47,11 @@ module.exports = (sequelize) => {
       type: DataTypes.BOOLEAN,
       defaultValue: false
     },
+    // Admin can gift free access to specific sub-account
+    isGifted: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
     // GHL Integration fields
     ghlLocationId: {
       type: DataTypes.STRING,

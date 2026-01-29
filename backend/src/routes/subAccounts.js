@@ -35,8 +35,9 @@ router.post('/', authenticateJWT, async (req, res) => {
 
     // For regular users, check if they have available slots
     if (!isAdmin) {
+      // Count only non-gifted sub-accounts (gifted ones don't use slots)
       const currentSubAccountCount = await SubAccount.count({
-        where: { customerId: req.customer.id }
+        where: { customerId: req.customer.id, isGifted: false }
       });
       const subscriptionQuantity = req.customer.subscriptionQuantity || 0;
       const availableSlots = subscriptionQuantity - currentSubAccountCount;
