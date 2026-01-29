@@ -130,11 +130,47 @@ router.get('/callback', async (req, res) => {
     }
 
     // Strategy 2: Try to find SubAccount by locationId (returning user or already linked)
+    // SECURITY: Only allow if the sub-account belongs to the same customer, or if no customer context
     if (!subAccount && locationId) {
-      subAccount = await SubAccount.findOne({
+      const foundByLocation = await SubAccount.findOne({
         where: { ghlLocationId: locationId }
       });
-      if (subAccount) {
+      if (foundByLocation) {
+        // If we have a customer context from state, verify ownership
+        if (stateValid && customerId && foundByLocation.customerId !== customerId) {
+          logger.warn('Location ID already belongs to another customer', {
+            locationId,
+            existingCustomerId: foundByLocation.customerId,
+            requestingCustomerId: customerId
+          });
+          return res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <title>Connection Failed</title>
+              <style>
+                body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
+                .box { background: white; padding: 40px; border-radius: 16px; text-align: center; max-width: 500px; }
+              </style>
+            </head>
+            <body>
+              <div class="box">
+                <h1 style="color:#ef4444">Location Already In Use</h1>
+                <p>This GHL location is already connected to another account.</p>
+                <p>Location ID: ${locationId}</p>
+                <button onclick="window.close()" style="margin-top:20px;padding:10px 20px;background:#ef4444;color:white;border:none;border-radius:8px;cursor:pointer;">Close Window</button>
+              </div>
+              <script>
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'GHL_OAUTH_RESULT', success: false, error: 'location_in_use' }, '*');
+                }
+              </script>
+            </body>
+            </html>
+          `);
+        }
+        subAccount = foundByLocation;
         logger.info('Found SubAccount by locationId', { locationId, subAccountId: subAccount.id });
       }
     }
