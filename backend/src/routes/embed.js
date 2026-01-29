@@ -58,7 +58,8 @@ router.get('/token-by-location/:locationId', async (req, res) => {
 
     // Find sub-account by GHL location ID - STRICT match only
     const subAccount = await SubAccount.findOne({
-      where: { ghlLocationId: locationId, isActive: true }
+      where: { ghlLocationId: locationId, isActive: true },
+      include: [{ model: Customer, as: 'customer' }]
     });
 
     // SECURITY: Do NOT auto-create sub-accounts. User must install via OAuth first.
@@ -68,6 +69,15 @@ router.get('/token-by-location/:locationId', async (req, res) => {
         error: 'Location not configured',
         message: 'This location has not been set up yet. Please install the app from the GHL Marketplace first.',
         locationId
+      });
+    }
+
+    // Check if customer account is active
+    if (!subAccount.customer || !subAccount.customer.isActive) {
+      logger.warn('Customer account is inactive for locationId', { locationId, customerId: subAccount.customerId });
+      return res.status(403).json({
+        error: 'Account inactive',
+        message: 'This account has been deactivated. Please contact support.'
       });
     }
 
