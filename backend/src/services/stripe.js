@@ -270,19 +270,54 @@ class StripeService {
           });
 
           if (customer) {
-            const status = subscription.status === 'active' ? 'active' :
-                          subscription.status === 'trialing' ? 'trialing' :
-                          subscription.status === 'past_due' ? 'past_due' : 'inactive';
+            // Check if subscription is set to cancel at period end
+            const isCanceledAtPeriodEnd = subscription.cancel_at_period_end;
+
+            let status;
+            if (subscription.status === 'active') {
+              status = isCanceledAtPeriodEnd ? 'canceling' : 'active';
+            } else if (subscription.status === 'trialing') {
+              status = 'trialing';
+            } else if (subscription.status === 'past_due') {
+              status = 'past_due';
+            } else {
+              status = 'inactive';
+            }
 
             // Get quantity from subscription
             const quantity = subscription.items.data[0]?.quantity || 0;
 
+            const previousStatus = customer.subscriptionStatus;
+
             await customer.update({
               subscriptionStatus: status,
               subscriptionQuantity: quantity,
+              subscriptionId: subscription.id,
               planType: quantity >= 11 ? 'volume' : 'standard'
             });
-            logger.info(`Subscription updated for customer ${customer.id}: ${status}, quantity: ${quantity}`);
+
+            // If subscription was resumed (canceling -> active)
+            if (previousStatus === 'canceling' && status === 'active') {
+              logger.info(`Subscription resumed for customer ${customer.id}`);
+              // Reactivate all sub-accounts
+              await SubAccount.update(
+                { isPaid: true },
+                { where: { customerId: customer.id } }
+              );
+              // Send email notification
+              emailService.sendSubscriptionActivated(customer.email, customer.name, 'Resumed')
+                .catch(err => logger.error('Failed to send subscription resumed email:', err));
+            }
+
+            // If subscription was scheduled for cancellation
+            if (previousStatus === 'active' && status === 'canceling') {
+              logger.info(`Subscription scheduled for cancellation for customer ${customer.id}`);
+              // Send email about scheduled cancellation
+              emailService.sendSubscriptionCancelled(customer.email, customer.name)
+                .catch(err => logger.error('Failed to send subscription cancellation scheduled email:', err));
+            }
+
+            logger.info(`Subscription updated for customer ${customer.id}: ${status}, quantity: ${quantity}, cancelAtPeriodEnd: ${isCanceledAtPeriodEnd}`);
           }
           break;
         }
@@ -296,7 +331,9 @@ class StripeService {
           if (customer) {
             await customer.update({
               subscriptionStatus: 'canceled',
-              subscriptionId: null
+              subscriptionId: null,
+              subscriptionQuantity: 0,
+              planType: null
             });
 
             // Deactivate all sub-accounts
@@ -305,11 +342,13 @@ class StripeService {
               { where: { customerId: customer.id } }
             );
 
-            // Send subscription cancelled email
-            emailService.sendSubscriptionCancelled(customer.email, customer.name)
-              .catch(err => logger.error('Failed to send subscription cancelled email:', err));
+            // Send subscription cancelled email (only if not already sent during 'canceling' status)
+            if (customer.subscriptionStatus !== 'canceling') {
+              emailService.sendSubscriptionCancelled(customer.email, customer.name)
+                .catch(err => logger.error('Failed to send subscription cancelled email:', err));
+            }
 
-            logger.info(`Subscription cancelled for customer ${customer.id}`);
+            logger.info(`Subscription deleted for customer ${customer.id}, quantity reset to 0`);
           }
           break;
         }

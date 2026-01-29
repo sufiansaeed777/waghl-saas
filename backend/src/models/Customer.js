@@ -41,7 +41,7 @@ module.exports = (sequelize) => {
       allowNull: true
     },
     subscriptionStatus: {
-      type: DataTypes.ENUM('active', 'inactive', 'trialing', 'past_due', 'canceled'),
+      type: DataTypes.ENUM('active', 'inactive', 'trialing', 'past_due', 'canceled', 'canceling'),
       defaultValue: 'inactive'
     },
     subscriptionId: {
