@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Users, Smartphone, MessageSquare, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Phone, MapPin, Crown, Gift, Search, Filter, Trash2 } from 'lucide-react'
+import { Users, Smartphone, MessageSquare, ToggleLeft, ToggleRight, ChevronDown, ChevronRight, Phone, MapPin, Crown, Gift, Search, Filter, Trash2, XCircle, PlayCircle } from 'lucide-react'
 import { useAuth } from '../contexts/AuthContext'
 
 export default function AdminDashboard() {
@@ -529,21 +529,13 @@ export default function AdminDashboard() {
                                   }`}>
                                     {subAccount.status}
                                   </span>
-                                  {subAccount.isPaid ? (
-                                    <button
-                                      onClick={() => giftSubAccount(subAccount.id, subAccount.isPaid)}
-                                      className="text-xs px-2 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
-                                    >
-                                      Cancel Sub
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => giftSubAccount(subAccount.id, subAccount.isPaid)}
-                                      className="text-xs px-2 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200"
-                                    >
-                                      Resume Sub
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={() => giftSubAccount(subAccount.id, subAccount.isPaid)}
+                                    className={`p-1 rounded ${subAccount.isPaid ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
+                                    title={subAccount.isPaid ? 'Cancel subscription' : 'Resume subscription'}
+                                  >
+                                    {subAccount.isPaid ? <XCircle size={18} /> : <PlayCircle size={18} />}
+                                  </button>
                                   <button
                                     onClick={() => toggleSubAccount(subAccount.id)}
                                     className="p-1 hover:bg-gray-100 rounded"
@@ -614,21 +606,13 @@ export default function AdminDashboard() {
                   </td>
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      {account.isPaid ? (
-                        <button
-                          onClick={() => giftSubAccount(account.id, account.isPaid)}
-                          className="text-xs px-3 py-1 rounded bg-red-100 text-red-700 hover:bg-red-200"
-                        >
-                          Cancel Sub
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => giftSubAccount(account.id, account.isPaid)}
-                          className="text-xs px-3 py-1 rounded bg-green-100 text-green-700 hover:bg-green-200"
-                        >
-                          Resume Sub
-                        </button>
-                      )}
+                      <button
+                        onClick={() => giftSubAccount(account.id, account.isPaid)}
+                        className={`p-2 rounded ${account.isPaid ? 'bg-red-100 text-red-600 hover:bg-red-200' : 'bg-green-100 text-green-600 hover:bg-green-200'}`}
+                        title={account.isPaid ? 'Cancel subscription' : 'Resume subscription'}
+                      >
+                        {account.isPaid ? <XCircle size={20} /> : <PlayCircle size={20} />}
+                      </button>
                       <button
                         onClick={() => toggleSubAccount(account.id)}
                         className="p-2 hover:bg-gray-100 rounded"
