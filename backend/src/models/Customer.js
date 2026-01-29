@@ -58,6 +58,11 @@ module.exports = (sequelize) => {
       type: DataTypes.BOOLEAN,
       defaultValue: false
     },
+    // Number of sub-account slots purchased
+    subscriptionQuantity: {
+      type: DataTypes.INTEGER,
+      defaultValue: 0
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true

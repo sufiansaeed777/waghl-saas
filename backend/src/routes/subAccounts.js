@@ -33,12 +33,31 @@ router.post('/', authenticateJWT, async (req, res) => {
     // Check if user is admin or has unlimited access
     const isAdmin = req.customer.role === 'admin' || req.customer.hasUnlimitedAccess;
 
-    // Regular users must have active subscription to create sub-accounts
-    if (!isAdmin && req.customer.subscriptionStatus !== 'active') {
-      return res.status(402).json({
-        error: 'Subscription required',
-        message: 'Please subscribe to create sub-accounts'
+    // For regular users, check if they have available slots
+    if (!isAdmin) {
+      const currentSubAccountCount = await SubAccount.count({
+        where: { customerId: req.customer.id }
       });
+      const subscriptionQuantity = req.customer.subscriptionQuantity || 0;
+      const availableSlots = subscriptionQuantity - currentSubAccountCount;
+
+      if (availableSlots <= 0) {
+        // Calculate next slot price
+        const nextSlotNumber = subscriptionQuantity + 1;
+        const price = nextSlotNumber >= 11 ? 19 : 29;
+
+        return res.status(402).json({
+          error: 'No available slots',
+          message: subscriptionQuantity === 0
+            ? `You need to purchase a subscription to create sub-accounts. €${price}/month per sub-account.`
+            : `You have used all ${subscriptionQuantity} slot(s). Purchase another slot for €${price}/month.`,
+          subscriptionQuantity,
+          currentSubAccountCount,
+          availableSlots: 0,
+          nextSlotPrice: price,
+          isVolumeEligible: nextSlotNumber >= 11
+        });
+      }
     }
 
     // Validate GHL Location ID if provided
@@ -64,12 +83,12 @@ router.post('/', authenticateJWT, async (req, res) => {
       }
     }
 
-    // Admins get free sub-accounts (isPaid = true), regular users depend on subscription
+    // Create sub-account (isPaid = true since they have a slot)
     const subAccount = await SubAccount.create({
       customerId: req.customer.id,
       name,
       ghlLocationId: ghlLocationId || null,
-      isPaid: isAdmin || req.customer.subscriptionStatus === 'active'
+      isPaid: true // All sub-accounts are paid now since they require slots
     });
 
     res.status(201).json({

@@ -35,6 +35,51 @@ router.post('/subscribe', authenticateJWT, async (req, res) => {
   }
 });
 
+// Get subscription info (slots available, pricing)
+router.get('/subscription-info', authenticateJWT, async (req, res) => {
+  try {
+    // Admin/unlimited users have unlimited slots
+    if (req.customer.role === 'admin' || req.customer.hasUnlimitedAccess) {
+      return res.json({
+        subscriptionQuantity: 999,
+        subAccountCount: 0,
+        availableSlots: 999,
+        nextSlotPrice: 0,
+        isVolumeEligible: false,
+        planType: 'free',
+        hasUnlimitedAccess: true
+      });
+    }
+
+    const info = await stripeService.getSubscriptionInfo(req.customer);
+    res.json(info);
+  } catch (error) {
+    logger.error('Get subscription info error:', error);
+    res.status(500).json({ error: 'Failed to get subscription info' });
+  }
+});
+
+// Add a sub-account slot (buy subscription or increase quantity)
+router.post('/add-slot', authenticateJWT, async (req, res) => {
+  try {
+    // Check if Stripe is configured
+    if (!stripeService.isConfigured()) {
+      return res.status(503).json({ error: 'Billing is not configured' });
+    }
+
+    // Admin/unlimited users don't need to buy slots
+    if (req.customer.role === 'admin' || req.customer.hasUnlimitedAccess) {
+      return res.json({ success: true, message: 'You have unlimited access' });
+    }
+
+    const result = await stripeService.addSubscriptionSlot(req.customer);
+    res.json(result);
+  } catch (error) {
+    logger.error('Add slot error:', error);
+    res.status(500).json({ error: 'Failed to add subscription slot' });
+  }
+});
+
 // Get billing portal
 router.get('/portal', authenticateJWT, async (req, res) => {
   try {

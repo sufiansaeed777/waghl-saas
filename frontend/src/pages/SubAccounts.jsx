@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, Pencil, X } from 'lucide-react'
+import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, Pencil, X, ShoppingCart } from 'lucide-react'
 
 export default function SubAccounts() {
   const { user } = useAuth()
@@ -15,10 +15,13 @@ export default function SubAccounts() {
   const [newLocationId, setNewLocationId] = useState('')
   const [creating, setCreating] = useState(false)
 
+  // Subscription info
+  const [subscriptionInfo, setSubscriptionInfo] = useState(null)
+  const [buyingSlot, setBuyingSlot] = useState(false)
+
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('')
   const [filterStatus, setFilterStatus] = useState('all')
-  const [filterPayment, setFilterPayment] = useState('all')
 
   // Edit modal state
   const [editModal, setEditModal] = useState({ open: false, subAccount: null })
@@ -26,7 +29,10 @@ export default function SubAccounts() {
 
   useEffect(() => {
     fetchSubAccounts()
-  }, [])
+    if (!isAdmin) {
+      fetchSubscriptionInfo()
+    }
+  }, [isAdmin])
 
   const fetchSubAccounts = async () => {
     try {
@@ -37,6 +43,49 @@ export default function SubAccounts() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const fetchSubscriptionInfo = async () => {
+    try {
+      const { data } = await api.get('/billing/subscription-info')
+      setSubscriptionInfo(data)
+    } catch (error) {
+      console.error('Failed to fetch subscription info:', error)
+    }
+  }
+
+  const handleBuySlot = async () => {
+    setBuyingSlot(true)
+    try {
+      const { data } = await api.post('/billing/add-slot')
+      if (data.checkoutUrl) {
+        window.location.href = data.checkoutUrl
+      } else {
+        toast.success(data.message || 'Slot added successfully')
+        fetchSubscriptionInfo()
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to add slot')
+    } finally {
+      setBuyingSlot(false)
+    }
+  }
+
+  const handleCreateClick = () => {
+    // Check if user has available slots
+    if (!isAdmin && subscriptionInfo && subscriptionInfo.availableSlots <= 0) {
+      // Show buy slot message
+      const price = subscriptionInfo.nextSlotPrice || 29
+      const isVolume = subscriptionInfo.isVolumeEligible
+
+      if (subscriptionInfo.subscriptionQuantity === 0) {
+        toast.error(`You need to purchase a subscription first. €${price}/month per sub-account.`)
+      } else {
+        toast.error(`You've used all ${subscriptionInfo.subscriptionQuantity} slot(s). Buy another for €${price}/month.`)
+      }
+      return
+    }
+    setShowCreateModal(true)
   }
 
   const createSubAccount = async (e) => {
@@ -53,19 +102,17 @@ export default function SubAccounts() {
       setNewName('')
       setNewLocationId('')
       fetchSubAccounts()
+      fetchSubscriptionInfo() // Refresh slot count
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Failed to create sub-account')
+      const errorData = error.response?.data
+      if (error.response?.status === 402) {
+        // Payment required - show detailed message
+        toast.error(errorData.message || 'Please purchase a subscription slot first')
+      } else {
+        toast.error(errorData?.error || 'Failed to create sub-account')
+      }
     } finally {
       setCreating(false)
-    }
-  }
-
-  const handlePayment = async (subAccountId) => {
-    try {
-      const { data } = await api.post(`/billing/checkout/${subAccountId}`)
-      window.location.href = data.url
-    } catch (error) {
-      toast.error('Failed to start checkout')
     }
   }
 
@@ -76,6 +123,7 @@ export default function SubAccounts() {
       await api.delete(`/sub-accounts/${id}`)
       toast.success('Sub-account deleted')
       fetchSubAccounts()
+      fetchSubscriptionInfo() // Refresh slot count
     } catch (error) {
       toast.error('Failed to delete sub-account')
     }
@@ -129,25 +177,19 @@ export default function SubAccounts() {
         if (filterStatus === 'disconnected' && account.status === 'connected') return false
       }
 
-      // Filter by payment
-      if (filterPayment !== 'all') {
-        if (filterPayment === 'paid' && !account.isPaid) return false
-        if (filterPayment === 'unpaid' && account.isPaid) return false
-      }
-
       return true
     })
-  }, [subAccounts, searchQuery, filterStatus, filterPayment])
+  }, [subAccounts, searchQuery, filterStatus])
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex justify-between items-center mb-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Sub-Accounts</h1>
           <p className="text-gray-600 mt-1">Manage your WhatsApp connections</p>
         </div>
         <button
-          onClick={() => setShowCreateModal(true)}
+          onClick={handleCreateClick}
           className="flex items-center gap-2 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors"
         >
           <Plus size={20} />
@@ -155,18 +197,69 @@ export default function SubAccounts() {
         </button>
       </div>
 
+      {/* Subscription Info Banner - for regular users */}
+      {!isAdmin && subscriptionInfo && (
+        <div className={`mb-6 p-4 rounded-lg border ${
+          subscriptionInfo.availableSlots > 0
+            ? 'bg-green-50 border-green-200'
+            : 'bg-yellow-50 border-yellow-200'
+        }`}>
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <p className="font-medium text-gray-900">
+                {subscriptionInfo.availableSlots > 0 ? (
+                  <>You can create <span className="text-green-600">{subscriptionInfo.availableSlots}</span> more sub-account{subscriptionInfo.availableSlots !== 1 ? 's' : ''}</>
+                ) : subscriptionInfo.subscriptionQuantity === 0 ? (
+                  <span className="text-yellow-700">No subscription yet - purchase to create sub-accounts</span>
+                ) : (
+                  <span className="text-yellow-700">All {subscriptionInfo.subscriptionQuantity} slot(s) used</span>
+                )}
+              </p>
+              <p className="text-sm text-gray-600 mt-1">
+                {subscriptionInfo.subscriptionQuantity > 0 && (
+                  <>{subscriptionInfo.subAccountCount} of {subscriptionInfo.subscriptionQuantity} slot{subscriptionInfo.subscriptionQuantity !== 1 ? 's' : ''} used • </>
+                )}
+                Next slot: €{subscriptionInfo.nextSlotPrice}/month
+                {subscriptionInfo.isVolumeEligible && (
+                  <span className="ml-2 text-green-600 font-medium">(Volume discount!)</span>
+                )}
+              </p>
+            </div>
+            <button
+              onClick={handleBuySlot}
+              disabled={buyingSlot}
+              className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
+            >
+              <ShoppingCart size={18} />
+              {buyingSlot ? 'Processing...' : `Buy Slot (€${subscriptionInfo.nextSlotPrice}/mo)`}
+            </button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center py-12 text-gray-500">Loading...</div>
       ) : subAccounts.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-12 text-center">
           <p className="text-gray-500 mb-4">No sub-accounts yet</p>
-          <button
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors"
-          >
-            <Plus size={20} />
-            Create your first sub-account
-          </button>
+          {!isAdmin && subscriptionInfo && subscriptionInfo.availableSlots <= 0 ? (
+            <button
+              onClick={handleBuySlot}
+              disabled={buyingSlot}
+              className="inline-flex items-center gap-2 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors"
+            >
+              <ShoppingCart size={20} />
+              {buyingSlot ? 'Processing...' : `Buy Subscription (€${subscriptionInfo?.nextSlotPrice || 29}/mo)`}
+            </button>
+          ) : (
+            <button
+              onClick={handleCreateClick}
+              className="inline-flex items-center gap-2 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors"
+            >
+              <Plus size={20} />
+              Create your first sub-account
+            </button>
+          )}
         </div>
       ) : (
         <div className="bg-white rounded-lg shadow overflow-hidden">
@@ -199,19 +292,6 @@ export default function SubAccounts() {
                   <option value="connected">Connected</option>
                   <option value="disconnected">Disconnected</option>
                 </select>
-
-                {/* Payment Filter - only for regular users */}
-                {!isAdmin && (
-                  <select
-                    value={filterPayment}
-                    onChange={(e) => setFilterPayment(e.target.value)}
-                    className="px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500"
-                  >
-                    <option value="all">All Payment</option>
-                    <option value="paid">Paid</option>
-                    <option value="unpaid">Unpaid</option>
-                  </select>
-                )}
               </div>
 
               {/* Results count */}
@@ -228,14 +308,13 @@ export default function SubAccounts() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location ID</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-                {!isAdmin && <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment</th>}
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y">
               {filteredSubAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={isAdmin ? 5 : 6} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
                     No sub-accounts found matching your filters
                   </td>
                 </tr>
@@ -260,23 +339,6 @@ export default function SubAccounts() {
                       {account.status}
                     </span>
                   </td>
-                  {!isAdmin && (
-                    <td className="px-6 py-4">
-                      {account.isPaid ? (
-                        <span className="text-sm px-2 py-1 rounded bg-green-100 text-green-700">
-                          Paid
-                        </span>
-                      ) : (
-                        <button
-                          onClick={() => handlePayment(account.id)}
-                          className="flex items-center gap-1 text-sm px-2 py-1 rounded bg-primary-100 text-primary-700 hover:bg-primary-200"
-                        >
-                          <CreditCard size={14} />
-                          Pay
-                        </button>
-                      )}
-                    </td>
-                  )}
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button
@@ -310,8 +372,31 @@ export default function SubAccounts() {
       {/* Create Modal */}
       {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
-            <h2 className="text-xl font-bold mb-4">Create Sub-Account</h2>
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md mx-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-bold">Create Sub-Account</h2>
+              <button
+                onClick={() => {
+                  setShowCreateModal(false)
+                  setNewName('')
+                  setNewLocationId('')
+                }}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Slot info */}
+            {!isAdmin && subscriptionInfo && (
+              <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
+                <p className="text-blue-800">
+                  After creating this sub-account, you will have{' '}
+                  <strong>{subscriptionInfo.availableSlots - 1}</strong> slot{subscriptionInfo.availableSlots - 1 !== 1 ? 's' : ''} remaining.
+                </p>
+              </div>
+            )}
+
             <form onSubmit={createSubAccount}>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">

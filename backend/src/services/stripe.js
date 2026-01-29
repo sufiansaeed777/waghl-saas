@@ -102,6 +102,115 @@ class StripeService {
     }
   }
 
+  // Add a sub-account slot (increase subscription quantity)
+  async addSubscriptionSlot(customer) {
+    try {
+      checkStripeConfigured();
+
+      const currentQuantity = customer.subscriptionQuantity || 0;
+      const newQuantity = currentQuantity + 1;
+
+      // Determine price based on quantity (€29 for 1-10, €19 for 11+)
+      const isVolumePrice = newQuantity >= 11;
+      const priceId = isVolumePrice
+        ? process.env.STRIPE_VOLUME_PRICE_ID
+        : process.env.STRIPE_PRICE_ID;
+
+      // If customer doesn't have Stripe account, create one
+      if (!customer.stripeCustomerId) {
+        await this.createStripeCustomer(customer);
+      }
+
+      // If customer has an existing subscription, update quantity
+      if (customer.subscriptionId) {
+        const subscription = await stripe.subscriptions.retrieve(customer.subscriptionId);
+        const subscriptionItem = subscription.items.data[0];
+
+        // If switching to volume pricing, update the price
+        if (isVolumePrice && subscriptionItem.price.id !== priceId) {
+          // Update to volume price for ALL items from next billing cycle
+          await stripe.subscriptions.update(customer.subscriptionId, {
+            items: [{
+              id: subscriptionItem.id,
+              price: priceId,
+              quantity: newQuantity
+            }],
+            proration_behavior: 'none' // Apply from next billing cycle
+          });
+        } else {
+          // Just increase quantity
+          await stripe.subscriptionItems.update(subscriptionItem.id, {
+            quantity: newQuantity
+          });
+        }
+
+        // Update customer's subscription quantity
+        await customer.update({
+          subscriptionQuantity: newQuantity,
+          planType: isVolumePrice ? 'volume' : 'standard'
+        });
+
+        return {
+          success: true,
+          newQuantity,
+          isVolumePrice,
+          message: isVolumePrice
+            ? 'Volume discount applied! All sub-accounts will be €19/month from next billing cycle.'
+            : 'Slot added successfully'
+        };
+      }
+
+      // Create new subscription checkout
+      const session = await stripe.checkout.sessions.create({
+        customer: customer.stripeCustomerId,
+        payment_method_types: ['card'],
+        line_items: [{
+          price: priceId,
+          quantity: 1
+        }],
+        mode: 'subscription',
+        success_url: `${process.env.FRONTEND_URL}/sub-accounts?subscription=success&slots=1`,
+        cancel_url: `${process.env.FRONTEND_URL}/sub-accounts?subscription=cancelled`,
+        metadata: {
+          customerId: customer.id,
+          action: 'add_slot',
+          newQuantity: '1'
+        }
+      });
+
+      return { success: true, checkoutUrl: session.url };
+    } catch (error) {
+      logger.error('Add subscription slot error:', error);
+      throw error;
+    }
+  }
+
+  // Get subscription info for customer
+  async getSubscriptionInfo(customer) {
+    try {
+      const subAccountCount = await SubAccount.count({ where: { customerId: customer.id } });
+      const subscriptionQuantity = customer.subscriptionQuantity || 0;
+      const availableSlots = subscriptionQuantity - subAccountCount;
+
+      // Calculate next slot price
+      const nextSlotNumber = subscriptionQuantity + 1;
+      const nextSlotPrice = nextSlotNumber >= 11 ? 19 : 29;
+      const isVolumeEligible = nextSlotNumber >= 11;
+
+      return {
+        subscriptionQuantity,
+        subAccountCount,
+        availableSlots,
+        nextSlotPrice,
+        isVolumeEligible,
+        planType: customer.planType || 'standard'
+      };
+    } catch (error) {
+      logger.error('Get subscription info error:', error);
+      throw error;
+    }
+  }
+
   // Handle webhook events
   async handleWebhook(event) {
     try {
@@ -109,18 +218,34 @@ class StripeService {
       switch (event.type) {
         case 'checkout.session.completed': {
           const session = event.data.object;
-          const { customerId, subAccountId } = session.metadata;
+          const { customerId, subAccountId, action, newQuantity } = session.metadata;
 
           // Update customer subscription status
           const customer = await Customer.findByPk(customerId);
           if (customer) {
+            // Get subscription details to get quantity
+            let subscriptionQuantity = customer.subscriptionQuantity || 0;
+
+            if (session.subscription) {
+              const subscription = await stripe.subscriptions.retrieve(session.subscription);
+              const quantity = subscription.items.data[0]?.quantity || 1;
+              subscriptionQuantity = quantity;
+            }
+
+            // If this was a slot addition
+            if (action === 'add_slot' && newQuantity) {
+              subscriptionQuantity = parseInt(newQuantity);
+            }
+
             await customer.update({
               subscriptionStatus: 'active',
-              subscriptionId: session.subscription
+              subscriptionId: session.subscription,
+              subscriptionQuantity: subscriptionQuantity,
+              planType: subscriptionQuantity >= 11 ? 'volume' : 'standard'
             });
           }
 
-          // Activate sub-account
+          // Activate sub-account (legacy support)
           if (subAccountId) {
             const subAccount = await SubAccount.findByPk(subAccountId);
             if (subAccount) {
@@ -134,7 +259,7 @@ class StripeService {
               .catch(err => logger.error('Failed to send subscription activated email:', err));
           }
 
-          logger.info(`Checkout completed for customer ${customerId}`);
+          logger.info(`Checkout completed for customer ${customerId}, quantity: ${customer?.subscriptionQuantity}`);
           break;
         }
 
@@ -149,8 +274,15 @@ class StripeService {
                           subscription.status === 'trialing' ? 'trialing' :
                           subscription.status === 'past_due' ? 'past_due' : 'inactive';
 
-            await customer.update({ subscriptionStatus: status });
-            logger.info(`Subscription updated for customer ${customer.id}: ${status}`);
+            // Get quantity from subscription
+            const quantity = subscription.items.data[0]?.quantity || 0;
+
+            await customer.update({
+              subscriptionStatus: status,
+              subscriptionQuantity: quantity,
+              planType: quantity >= 11 ? 'volume' : 'standard'
+            });
+            logger.info(`Subscription updated for customer ${customer.id}: ${status}, quantity: ${quantity}`);
           }
           break;
         }
