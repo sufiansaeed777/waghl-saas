@@ -488,8 +488,6 @@ router.get('/stats', async (req, res) => {
   }
 });
 
-const ghlService = require('../services/ghl');
-
 // Bulk uninstall GHL from all sub-accounts (calls GHL API + clears data)
 router.post('/ghl/bulk-uninstall', async (req, res) => {
   try {
