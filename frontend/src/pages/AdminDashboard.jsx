@@ -471,16 +471,20 @@ export default function AdminDashboard() {
                                 <Gift size={20} />
                               </button>
                             )}
-                            <button
-                              onClick={() => toggleCustomer(customer.id)}
-                              className="p-2 hover:bg-gray-100 rounded"
-                            >
-                              {customer.isActive ? (
-                                <ToggleRight className="text-green-500" size={24} />
-                              ) : (
-                                <ToggleLeft className="text-gray-400" size={24} />
-                              )}
-                            </button>
+                            {/* Active/Inactive toggle - hidden for admin's own account */}
+                            {customer.id !== user?.id && (
+                              <button
+                                onClick={() => toggleCustomer(customer.id)}
+                                className="p-2 hover:bg-gray-100 rounded"
+                                title={customer.isActive ? 'Deactivate customer' : 'Activate customer'}
+                              >
+                                {customer.isActive ? (
+                                  <ToggleRight className="text-green-500" size={24} />
+                                ) : (
+                                  <ToggleLeft className="text-gray-400" size={24} />
+                                )}
+                              </button>
+                            )}
                             {/* Delete button - hidden for admin's own account */}
                             {customer.id !== user?.id && (
                               <button
