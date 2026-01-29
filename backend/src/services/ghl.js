@@ -400,7 +400,7 @@ class GHLService {
   // Uninstall app from GHL location using Marketplace API
   // API: DELETE /marketplace/app/:appId/installations
   // Docs: https://marketplace.gohighlevel.com/docs/ghl/marketplace/uninstall-application/index.html
-  async uninstallFromLocation(subAccount) {
+  async uninstallFromLocation(subAccount, reason = 'User requested uninstall') {
     try {
       if (!subAccount.ghlAccessToken || !subAccount.ghlLocationId) {
         logger.warn('Cannot uninstall: missing access token or locationId', {
@@ -415,14 +415,25 @@ class GHLService {
       const appId = this.clientId.split('-')[0]; // Get base app ID without suffix
       const locationId = subAccount.ghlLocationId;
 
+      // Get companyId from the customer
+      let companyId = null;
+      if (subAccount.customer && subAccount.customer.ghlCompanyId) {
+        companyId = subAccount.customer.ghlCompanyId;
+      } else {
+        // Fetch customer if not included
+        const customer = await Customer.findByPk(subAccount.customerId);
+        companyId = customer?.ghlCompanyId;
+      }
+
       logger.info('Calling GHL uninstall API', {
         subAccountId: subAccount.id,
         locationId,
+        companyId,
         appId,
         url: `${GHL_API_BASE}/marketplace/app/${appId}/installations`
       });
 
-      // Try with locationId in request body first (as per webhook structure)
+      // Send full request body as per GHL API docs
       const response = await axios({
         method: 'DELETE',
         url: `${GHL_API_BASE}/marketplace/app/${appId}/installations`,
@@ -432,13 +443,16 @@ class GHLService {
           'Version': '2021-07-28'
         },
         data: {
-          locationId: locationId
+          companyId: companyId || locationId, // Use locationId as fallback if no companyId
+          locationId: locationId,
+          reason: reason
         }
       });
 
       logger.info('GHL uninstall API success', {
         subAccountId: subAccount.id,
         locationId,
+        companyId,
         response: response.data
       });
 
