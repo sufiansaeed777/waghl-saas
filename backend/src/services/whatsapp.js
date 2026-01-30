@@ -269,43 +269,43 @@ class WhatsAppService {
             // Update last activity
             await mapping.update({ lastActivityAt: new Date(), contactName: pushName || mapping.contactName });
           } else {
-            // No mapping found - try to find a recent outbound message to this number
-            // and create a mapping (the reply creates the link)
-            const recentOutbound = await Message.findOne({
+            // No mapping found - try to safely match to a recent outbound
+            // SAFETY: Only auto-match if there's EXACTLY ONE unmapped number from recent outbound
+            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
+
+            // Find all unmapped phone numbers with recent activity
+            const unmappedMappings = await WhatsAppMapping.findAll({
               where: {
                 subAccountId,
-                direction: 'outbound'
-              },
-              order: [['createdAt', 'DESC']],
-              limit: 1
+                whatsappId: null,  // Phone number stored but no WhatsApp ID yet
+                lastActivityAt: { [require('sequelize').Op.gte]: fiveMinutesAgo }
+              }
             });
 
-            if (recentOutbound) {
-              // Check if there's an unmapped phone number we sent to recently
-              const unmappedMapping = await WhatsAppMapping.findOne({
-                where: {
-                  subAccountId,
-                  whatsappId: null  // Phone number stored but no WhatsApp ID yet
-                },
-                order: [['lastActivityAt', 'DESC']]
+            if (unmappedMappings.length === 1) {
+              // Safe to match - only one recent unmapped number
+              const unmappedMapping = unmappedMappings[0];
+              await unmappedMapping.update({
+                whatsappId: fromNumber,
+                contactName: pushName,
+                lastActivityAt: new Date()
               });
-
-              if (unmappedMapping) {
-                // Link this WhatsApp ID to the phone number
-                await unmappedMapping.update({
-                  whatsappId: fromNumber,
-                  contactName: pushName,
-                  lastActivityAt: new Date()
-                });
-                resolvedPhoneNumber = unmappedMapping.phoneNumber;
-                logger.info('Created WhatsApp ID mapping from recent outbound:', {
-                  whatsappId: fromNumber,
-                  phoneNumber: resolvedPhoneNumber,
-                  pushName
-                });
-              } else {
-                logger.warn('No unmapped phone number found to link WhatsApp ID:', { fromNumber, pushName });
-              }
+              resolvedPhoneNumber = unmappedMapping.phoneNumber;
+              logger.info('Created WhatsApp ID mapping (single unmapped):', {
+                whatsappId: fromNumber,
+                phoneNumber: resolvedPhoneNumber,
+                pushName
+              });
+            } else if (unmappedMappings.length > 1) {
+              // Multiple unmapped numbers - too risky to auto-match
+              logger.warn('Multiple unmapped phone numbers - cannot safely auto-match WhatsApp ID:', {
+                fromNumber,
+                pushName,
+                unmappedCount: unmappedMappings.length
+              });
+              // Keep using the WhatsApp ID as-is
+            } else {
+              logger.warn('No recent unmapped phone number found for WhatsApp ID:', { fromNumber, pushName });
             }
           }
         }
