@@ -174,12 +174,32 @@ class GHLService {
   }
 
   // Get single location details
-  async getLocation(customer, locationId) {
+  // Note: Location-scoped tokens can't use /locations/{id} endpoint
+  // Must use /locations/search instead
+  async getLocation(entity, locationId) {
     try {
-      const response = await this.apiRequest(customer, 'GET', `/locations/${locationId}`);
-      return response.location;
+      // For location-scoped tokens, use /locations/search
+      const response = await this.apiRequest(entity, 'GET', '/locations/search');
+      const locations = response.locations || [];
+
+      // Find the matching location
+      const location = locations.find(loc => loc.id === locationId);
+
+      if (location) {
+        logger.info('Found location via search:', { id: location.id, name: location.name });
+        return location;
+      }
+
+      // If only one location and locationId matches, return it
+      if (locations.length === 1) {
+        logger.info('Single location found:', { id: locations[0].id, name: locations[0].name });
+        return locations[0];
+      }
+
+      logger.warn('Location not found in search results', { locationId, foundCount: locations.length });
+      return null;
     } catch (error) {
-      logger.error('GHL get location error:', error);
+      logger.error('GHL get location error:', error.response?.data || error.message);
       throw new Error('Failed to fetch GHL location');
     }
   }

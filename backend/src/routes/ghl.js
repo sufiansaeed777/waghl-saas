@@ -296,6 +296,7 @@ router.get('/callback', async (req, res) => {
     try {
       // Reload subAccount to get updated tokens
       await subAccount.reload();
+      logger.info('Fetching location details from GHL...', { locationId, subAccountId: subAccount.id });
       const locationDetails = await ghlService.getLocation(subAccount, locationId);
 
       if (locationDetails && locationDetails.name) {
@@ -304,9 +305,19 @@ router.get('/callback', async (req, res) => {
           name: locationDetails.name,
           ghlLocationName: locationDetails.name
         });
+        // Reload to get updated name
+        await subAccount.reload();
+        logger.info(`Sub-account name updated to: ${subAccount.name}`);
+      } else {
+        logger.warn('Location details returned but no name found', { locationDetails });
       }
     } catch (error) {
-      logger.warn(`Failed to fetch location name from GHL, keeping default name:`, error.message);
+      logger.error(`Failed to fetch location name from GHL:`, {
+        error: error.message,
+        stack: error.stack,
+        locationId,
+        subAccountId: subAccount.id
+      });
       // Don't fail the whole connection if we can't fetch the name
     }
 
