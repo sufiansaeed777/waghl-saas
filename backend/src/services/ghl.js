@@ -296,12 +296,13 @@ class GHLService {
   // Send message to GHL conversation (for logging purposes)
   async addMessageToConversation(customer, conversationId, message, direction = 'inbound') {
     try {
-      // GHL API uses numeric type: 1 = inbound, 2 = outbound
+      // GHL API inbound message endpoint
+      // Docs: https://marketplace.gohighlevel.com/docs/ghl/conversations/add-an-inbound-message
+      // Required fields: conversationId OR contactId, type, body
       const response = await this.apiRequest(customer, 'POST', `/conversations/messages/inbound`, {
         conversationId,
         type: 'SMS',
-        message,
-        direction: direction
+        body: message  // GHL uses 'body' not 'message' for content
       });
       logger.info(`Added ${direction} message to GHL conversation ${conversationId}`);
       return response;
