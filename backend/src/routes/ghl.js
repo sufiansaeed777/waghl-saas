@@ -122,6 +122,7 @@ router.get('/callback', async (req, res) => {
             incoming: locationId
           });
           const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+          res.set('Content-Type', 'text/html');
           return res.send(`
             <!DOCTYPE html>
             <html>
@@ -190,6 +191,7 @@ router.get('/callback', async (req, res) => {
             existingCustomerId: foundByLocation.customerId,
             requestingCustomerId: customerId
           });
+          res.set('Content-Type', 'text/html');
           return res.send(`
             <!DOCTYPE html>
             <html>
@@ -236,6 +238,7 @@ router.get('/callback', async (req, res) => {
       const errorMessage = encodeURIComponent('Location ID mismatch. The GHL location does not match any sub-account.');
 
       // Send message to opener window and redirect
+      res.set('Content-Type', 'text/html');
       return res.send(`
         <!DOCTYPE html>
         <html>
@@ -340,6 +343,7 @@ router.get('/callback', async (req, res) => {
     if (isFromGHL) {
       // Send success message to opener window and close popup
       logger.info('GHL OAuth successful, notifying opener window');
+      res.set('Content-Type', 'text/html');
       res.send(`
         <!DOCTYPE html>
         <html>
