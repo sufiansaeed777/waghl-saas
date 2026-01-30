@@ -250,6 +250,10 @@
     console.log('Referrer:', document.referrer);
     console.log('Full URL:', window.location.href);
 
+    // Prevent multiple initializations and flashing
+    let isInitialized = false;
+    let isPolling = false;
+
     // Modal functions
     function showModal(modalId) {
       document.getElementById(modalId).classList.add('show');
@@ -535,7 +539,7 @@
           const newLocationId = data.locationId || data.location_id || data.activeLocation ||
                                (data.location && data.location.id) ||
                                (data.data && data.data.locationId);
-          if (newLocationId && !isTemplateVariable(newLocationId)) {
+          if (newLocationId && !isTemplateVariable(newLocationId) && !isInitialized) {
             console.log('Got locationId from postMessage:', newLocationId);
             locationId = newLocationId;
             init();
@@ -756,6 +760,12 @@
 
     // Main initialization with complete fallback chain
     async function init() {
+      // Prevent multiple initializations
+      if (isInitialized) {
+        console.log('Already initialized, skipping');
+        return;
+      }
+      isInitialized = true;
       console.log('=== Starting initialization ===');
 
       // STEP 1: Already have token? Use it directly
@@ -878,8 +888,9 @@
 
     async function loadStatus() {
       try {
-        // Include locationId in query for security validation
-        const statusUrl = apiBase + '/api/embed/status/' + token + (locationId ? '?locationId=' + locationId : '');
+        // Don't pass locationId - token is sufficient for authentication
+        // Passing locationId from referrer can cause false "mismatch" errors
+        const statusUrl = apiBase + '/api/embed/status/' + token;
         const res = await fetch(statusUrl);
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
@@ -985,15 +996,16 @@
       btn.innerHTML = '<div class="spinner"></div> Connecting...';
 
       try {
-        // Include locationId in body for security validation
+        // Token is sufficient authentication - don't pass locationId
         const res = await fetch(apiBase + '/api/embed/connect/' + token, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ locationId: locationId })
+          body: JSON.stringify({})
         });
         const data = await res.json();
 
         if (res.ok) {
+          isPolling = false; // Reset polling flag
           pollStatus();
         } else {
           alert(data.error || 'Failed to connect');
@@ -1011,14 +1023,15 @@
       if (!confirm('Are you sure you want to disconnect WhatsApp?')) return;
 
       try {
-        // Include locationId in body for security validation
+        // Token is sufficient authentication
         const res = await fetch(apiBase + '/api/embed/disconnect/' + token, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ locationId: locationId })
+          body: JSON.stringify({})
         });
         if (res.ok) {
-          location.reload();
+          // Re-render status without page reload (prevents flashing)
+          loadStatus();
         } else {
           const data = await res.json().catch(() => ({}));
           alert(data.error || 'Failed to disconnect');
@@ -1032,10 +1045,11 @@
       if (!confirm('Are you sure you want to uninstall this app from GHL?\n\nThis will:\n- Disconnect WhatsApp\n- Remove the app from your GHL location')) return;
 
       try {
+        // Token is sufficient authentication
         const res = await fetch(apiBase + '/api/embed/ghl-uninstall/' + token, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ locationId: locationId })
+          body: JSON.stringify({})
         });
         const data = await res.json();
         if (res.ok && data.success) {
@@ -1055,26 +1069,35 @@
     }
 
     async function pollStatus() {
+      // Prevent concurrent polling
+      if (isPolling) {
+        console.log('Already polling, skipping');
+        return;
+      }
+      isPolling = true;
+
       try {
         console.log('Polling status...');
-        // Include locationId in query for security validation
-        const statusUrl = apiBase + '/api/embed/status/' + token + (locationId ? '?locationId=' + locationId : '');
+        // Don't pass locationId - token is sufficient
+        const statusUrl = apiBase + '/api/embed/status/' + token;
         const res = await fetch(statusUrl);
         const data = await res.json();
         console.log('Status response:', data.status, 'hasQR:', data.hasQR, 'qrCode length:', data.qrCode ? data.qrCode.length : 0);
 
-        if (data.status === 'connected') {
-          console.log('Connected! Reloading...');
-          location.reload();
-        } else if (data.hasQR && data.qrCode) {
-          console.log('Got QR code, rendering...');
-          renderStatus(data);
+        // Always render the status (no page reload to prevent flashing)
+        renderStatus(data);
+
+        // Continue polling if not connected
+        if (data.status !== 'connected') {
+          isPolling = false;
+          setTimeout(pollStatus, data.hasQR ? 3000 : 2000);
         } else {
-          console.log('No QR yet, polling again in 2s...');
-          setTimeout(pollStatus, 2000);
+          console.log('Connected!');
+          isPolling = false;
         }
       } catch (err) {
         console.error('Poll error:', err);
+        isPolling = false;
         setTimeout(pollStatus, 3000);
       }
     }
