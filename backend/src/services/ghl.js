@@ -139,7 +139,7 @@ class GHLService {
   }
 
   // Make authenticated API request (works with SubAccount or Customer)
-  async apiRequest(entity, method, endpoint, data = null) {
+  async apiRequest(entity, method, endpoint, data = null, apiVersion = '2021-07-28') {
     const accessToken = await this.getValidAccessToken(entity);
 
     try {
@@ -149,7 +149,8 @@ class GHLService {
         headers: {
           'Authorization': `Bearer ${accessToken}`,
           'Content-Type': 'application/json',
-          'Version': '2021-07-28'
+          'Accept': 'application/json',
+          'Version': apiVersion
         },
         data,
         timeout: 30000 // 30 second timeout
@@ -157,7 +158,13 @@ class GHLService {
 
       return response.data;
     } catch (error) {
-      logger.error(`GHL API error (${endpoint}):`, error.response?.data || error.message);
+      logger.error(`GHL API error (${endpoint}):`, {
+        message: error.message,
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        headers: error.response?.headers
+      });
       throw error;
     }
   }
@@ -175,33 +182,38 @@ class GHLService {
 
   // Get single location details
   async getLocation(entity, locationId) {
-    try {
-      // Try direct location endpoint first (works with locations.readonly scope)
-      const response = await this.apiRequest(entity, 'GET', `/locations/${locationId}`);
+    // Try multiple API versions as GHL has been inconsistent
+    const apiVersions = ['2021-07-28', '2021-04-15'];
 
-      if (response && response.location) {
-        logger.info('Found location:', { id: response.location.id, name: response.location.name });
-        return response.location;
+    for (const version of apiVersions) {
+      try {
+        logger.info(`Trying to fetch location with API version ${version}`, { locationId });
+        const response = await this.apiRequest(entity, 'GET', `/locations/${locationId}`, null, version);
+
+        if (response && response.location) {
+          logger.info('Found location:', { id: response.location.id, name: response.location.name, version });
+          return response.location;
+        }
+
+        // Response might be the location directly without wrapper
+        if (response && response.name) {
+          logger.info('Found location (direct):', { id: response.id, name: response.name, version });
+          return response;
+        }
+
+        logger.warn('Location response has no location data', { locationId, response, version });
+      } catch (error) {
+        logger.warn(`GHL get location failed with version ${version}:`, {
+          status: error.response?.status,
+          locationId
+        });
+        // Try next version
+        continue;
       }
-
-      // Response might be the location directly without wrapper
-      if (response && response.name) {
-        logger.info('Found location (direct):', { id: response.id, name: response.name });
-        return response;
-      }
-
-      logger.warn('Location response has no location data', { locationId, response });
-      return null;
-    } catch (error) {
-      logger.error('GHL get location error:', {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-        locationId
-      });
-      // Don't throw - let the caller handle gracefully
-      return null;
     }
+
+    logger.error('All API versions failed to fetch location', { locationId });
+    return null;
   }
 
   // Search contacts in a location
