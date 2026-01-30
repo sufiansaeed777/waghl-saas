@@ -108,19 +108,13 @@ export default function SubAccounts() {
         try {
           const { data: authData } = await api.get(`/ghl/auth-url/${subAccountId}`)
 
-          // Open OAuth in popup window
-          const width = 600
-          const height = 700
-          const left = (window.screen.width / 2) - (width / 2)
-          const top = (window.screen.height / 2) - (height / 2)
+          // Validate authUrl exists
+          if (!authData?.authUrl) {
+            toast.error('Failed to get GHL authorization URL')
+            return
+          }
 
-          const popup = window.open(
-            authData.authUrl,
-            'GHL OAuth',
-            `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
-          )
-
-          // Listen for OAuth result
+          // Set up message listener BEFORE opening popup to avoid race condition
           const handleMessage = (event) => {
             if (event.data?.type === 'GHL_OAUTH_RESULT') {
               if (event.data.success) {
@@ -133,6 +127,18 @@ export default function SubAccounts() {
             }
           }
           window.addEventListener('message', handleMessage)
+
+          // Open OAuth in popup window
+          const width = 600
+          const height = 700
+          const left = (window.screen.width / 2) - (width / 2)
+          const top = (window.screen.height / 2) - (height / 2)
+
+          const popup = window.open(
+            authData.authUrl,
+            'GHL OAuth',
+            `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+          )
 
           // Check if popup was closed
           const checkPopup = setInterval(() => {

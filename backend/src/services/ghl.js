@@ -63,7 +63,8 @@ class GHLService {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json'
-        }
+        },
+        timeout: 30000 // 30 second timeout
       });
 
       logger.info('GHL token exchange success', { locationId: response.data?.locationId });
@@ -98,7 +99,8 @@ class GHLService {
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': 'application/json'
-        }
+        },
+        timeout: 30000 // 30 second timeout
       });
 
       const { access_token, refresh_token, expires_in } = response.data;
@@ -149,7 +151,8 @@ class GHLService {
           'Content-Type': 'application/json',
           'Version': '2021-07-28'
         },
-        data
+        data,
+        timeout: 30000 // 30 second timeout
       });
 
       return response.data;

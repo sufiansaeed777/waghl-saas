@@ -21,7 +21,12 @@ export function AuthProvider({ children }) {
       const { data } = await api.get('/auth/me')
       setUser(data.customer)
     } catch (error) {
-      localStorage.removeItem('token')
+      // Only remove token on authentication errors (401, 403), not network errors
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        localStorage.removeItem('token')
+        setUser(null)
+      }
+      // For network errors, keep token and let user retry
     } finally {
       setLoading(false)
     }

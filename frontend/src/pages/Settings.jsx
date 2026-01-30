@@ -32,7 +32,7 @@ export default function Settings() {
       const { data } = await api.post('/billing/subscribe')
       window.location.href = data.url
     } catch (error) {
-      toast.error('Failed to start subscription checkout')
+      toast.error(error.response?.data?.error || 'Failed to start subscription checkout')
     }
   }
 
@@ -45,7 +45,7 @@ export default function Settings() {
       toast.success('Profile updated!')
       fetchUser()
     } catch (error) {
-      toast.error('Failed to update profile')
+      toast.error(error.response?.data?.error || 'Failed to update profile')
     } finally {
       setSaving(false)
     }

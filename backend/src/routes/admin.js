@@ -121,11 +121,13 @@ router.put('/customers/:id/toggle', async (req, res) => {
           }
         }
 
-        // Clear GHL tokens
+        // Clear GHL tokens and update status
         await subAccount.update({
           ghlAccessToken: null,
           ghlRefreshToken: null,
-          ghlConnected: false
+          ghlConnected: false,
+          isActive: false,
+          status: 'disconnected'
         });
       }
 
@@ -177,6 +179,27 @@ router.put('/sub-accounts/:id', async (req, res) => {
       subAccount.name = name;
     }
     if (ghlLocationId !== undefined) {
+      // Validate format (same as user creation)
+      if (ghlLocationId && !/^[a-zA-Z0-9]{10,50}$/.test(ghlLocationId)) {
+        return res.status(400).json({
+          error: 'Invalid GHL Location ID format',
+          message: 'Location ID should be alphanumeric, 10-50 characters'
+        });
+      }
+
+      // Check for duplicates (if changing to a new value)
+      if (ghlLocationId && ghlLocationId !== subAccount.ghlLocationId) {
+        const existingSubAccount = await SubAccount.findOne({
+          where: { ghlLocationId }
+        });
+        if (existingSubAccount && existingSubAccount.id !== subAccount.id) {
+          return res.status(400).json({
+            error: 'GHL Location ID already in use',
+            message: 'This location is already connected to another sub-account'
+          });
+        }
+      }
+
       subAccount.ghlLocationId = ghlLocationId;
     }
 
@@ -294,9 +317,11 @@ router.put('/sub-accounts/:id/gift', async (req, res) => {
     const wasGifted = subAccount.isGifted;
     subAccount.isGifted = !subAccount.isGifted;
 
-    // If gifting, also set isPaid to true
+    // If gifting, set isPaid to true; if ungifting, set isPaid to false
     if (subAccount.isGifted) {
       subAccount.isPaid = true;
+    } else {
+      subAccount.isPaid = false;
     }
 
     await subAccount.save();
@@ -407,10 +432,13 @@ router.put('/customers/:id/access', async (req, res) => {
     if (planType && ['free', 'standard', 'volume'].includes(planType)) {
       customer.planType = planType;
 
-      // If setting to free plan, activate subscription
+      // If setting to free plan, activate subscription and grant unlimited access
       if (planType === 'free') {
         customer.subscriptionStatus = 'active';
         customer.hasUnlimitedAccess = true;
+      } else {
+        // If changing away from free plan, remove unlimited access
+        customer.hasUnlimitedAccess = false;
       }
     }
 

@@ -2,14 +2,26 @@ const express = require('express');
 const router = express.Router();
 const { authenticateJWT } = require('../middleware/auth');
 const stripeService = require('../services/stripe');
+const { SubAccount } = require('../models');
 const logger = require('../utils/logger');
 
 // Create checkout session for sub-account
 router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
   try {
+    const subAccountId = req.params.subAccountId;
+
+    // Validate ownership - ensure sub-account belongs to this customer
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
     const session = await stripeService.createCheckoutSession(
       req.customer,
-      req.params.subAccountId
+      subAccountId
     );
 
     res.json({ url: session.url });
@@ -88,9 +100,15 @@ router.get('/portal', authenticateJWT, async (req, res) => {
       return res.status(503).json({ error: 'Billing is not configured' });
     }
 
-    // Check if customer has Stripe account
+    // Check if customer has Stripe account and active subscription
     if (!req.customer.stripeCustomerId) {
       return res.status(400).json({ error: 'No subscription found. Please subscribe first.' });
+    }
+
+    // Also verify they have an active or canceling subscription
+    const validStatuses = ['active', 'trialing', 'canceling', 'past_due'];
+    if (!validStatuses.includes(req.customer.subscriptionStatus)) {
+      return res.status(400).json({ error: 'No active subscription found. Please subscribe first.' });
     }
 
     const session = await stripeService.createBillingPortalSession(req.customer);
@@ -103,7 +121,17 @@ router.get('/portal', authenticateJWT, async (req, res) => {
 
 // Stripe webhook
 router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+  // Validate webhook secret is configured
+  if (!process.env.STRIPE_WEBHOOK_SECRET) {
+    logger.error('Webhook error: STRIPE_WEBHOOK_SECRET not configured');
+    return res.status(500).json({ error: 'Webhook not configured' });
+  }
+
   const sig = req.headers['stripe-signature'];
+  if (!sig) {
+    logger.error('Webhook error: Missing stripe-signature header');
+    return res.status(400).json({ error: 'Missing signature' });
+  }
 
   try {
     const Stripe = require('stripe');
@@ -119,6 +147,10 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
     res.json({ received: true });
   } catch (error) {
+    if (error.type === 'StripeSignatureVerificationError') {
+      logger.error('Webhook signature verification failed:', error.message);
+      return res.status(400).json({ error: 'Invalid signature' });
+    }
     logger.error('Webhook error:', error);
     res.status(400).json({ error: 'Webhook error' });
   }
