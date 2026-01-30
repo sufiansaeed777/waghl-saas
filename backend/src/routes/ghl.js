@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const { authenticateJWT } = require('../middleware/auth');
-const { Customer, SubAccount } = require('../models');
+const { Customer, SubAccount, WhatsAppMapping } = require('../models');
 const ghlService = require('../services/ghl');
 const whatsappService = require('../services/whatsapp');
 const messageQueue = require('../services/messageQueue');
@@ -548,6 +548,23 @@ router.post('/webhook', async (req, res) => {
       if (waStatus.status !== 'connected') {
         logger.warn(`WhatsApp not connected for sub-account ${subAccount.id}`);
         return res.status(200).json({ success: true });
+      }
+
+      // Store/update phone number mapping for WhatsApp ID resolution
+      // This allows us to map WhatsApp's internal IDs back to real phone numbers
+      const cleanPhone = phoneNumber.replace(/\D/g, '');
+      try {
+        await WhatsAppMapping.upsert({
+          subAccountId: subAccount.id,
+          phoneNumber: cleanPhone,
+          lastActivityAt: new Date()
+        }, {
+          conflictFields: ['subAccountId', 'phoneNumber']
+        });
+        logger.info('Stored phone mapping for outbound message:', { subAccountId: subAccount.id, phoneNumber: cleanPhone });
+      } catch (mappingError) {
+        logger.warn('Failed to store phone mapping:', mappingError.message);
+        // Continue anyway - mapping is not critical for sending
       }
 
       // Send message via WhatsApp (using queue for rate limiting / drip mode)

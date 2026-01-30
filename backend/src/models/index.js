@@ -22,6 +22,7 @@ const Customer = require('./Customer')(sequelize);
 const SubAccount = require('./SubAccount')(sequelize);
 const Message = require('./Message')(sequelize);
 const Webhook = require('./Webhook')(sequelize);
+const WhatsAppMapping = require('./WhatsAppMapping')(sequelize);
 
 // Define associations
 Customer.hasMany(SubAccount, { foreignKey: 'customerId', as: 'subAccounts' });
@@ -33,11 +34,15 @@ Message.belongsTo(SubAccount, { foreignKey: 'subAccountId', as: 'subAccount' });
 SubAccount.hasOne(Webhook, { foreignKey: 'subAccountId', as: 'webhook' });
 Webhook.belongsTo(SubAccount, { foreignKey: 'subAccountId', as: 'subAccount' });
 
+SubAccount.hasMany(WhatsAppMapping, { foreignKey: 'subAccountId', as: 'whatsappMappings' });
+WhatsAppMapping.belongsTo(SubAccount, { foreignKey: 'subAccountId', as: 'subAccount' });
+
 module.exports = {
   sequelize,
   Sequelize,
   Customer,
   SubAccount,
   Message,
-  Webhook
+  Webhook,
+  WhatsAppMapping
 };

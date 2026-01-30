@@ -2,7 +2,7 @@ const { Boom } = require('@hapi/boom');
 const QRCode = require('qrcode');
 const path = require('path');
 const fs = require('fs');
-const { SubAccount, Message, Customer } = require('../models');
+const { SubAccount, Message, Customer, WhatsAppMapping } = require('../models');
 const webhookService = require('./webhook');
 const ghlService = require('./ghl');
 const emailService = require('./email');
@@ -247,6 +247,73 @@ class WhatsAppService {
           // Note: For 1:1 chats with LID, we may not have the real number
           // WhatsApp privacy feature - some users hide their phone numbers
         }
+
+        // Check if fromNumber is a valid phone number or a WhatsApp internal ID
+        // Valid phone numbers are typically 10-15 digits and start with a country code (1-3 digits)
+        // WhatsApp internal IDs are often 15+ digits or don't match phone patterns
+        const isValidPhoneNumber = /^[1-9]\d{9,14}$/.test(fromNumber) && fromNumber.length <= 15;
+        let resolvedPhoneNumber = fromNumber;
+        const pushName = msg.pushName || null;
+
+        if (!isValidPhoneNumber) {
+          logger.info('fromNumber appears to be WhatsApp internal ID, checking mapping:', { fromNumber, pushName });
+
+          // Try to find existing mapping by WhatsApp ID
+          let mapping = await WhatsAppMapping.findOne({
+            where: { subAccountId, whatsappId: fromNumber }
+          });
+
+          if (mapping) {
+            resolvedPhoneNumber = mapping.phoneNumber;
+            logger.info('Found existing WhatsApp ID mapping:', { whatsappId: fromNumber, phoneNumber: resolvedPhoneNumber });
+            // Update last activity
+            await mapping.update({ lastActivityAt: new Date(), contactName: pushName || mapping.contactName });
+          } else {
+            // No mapping found - try to find a recent outbound message to this number
+            // and create a mapping (the reply creates the link)
+            const recentOutbound = await Message.findOne({
+              where: {
+                subAccountId,
+                direction: 'outbound'
+              },
+              order: [['createdAt', 'DESC']],
+              limit: 1
+            });
+
+            if (recentOutbound) {
+              // Check if there's an unmapped phone number we sent to recently
+              const unmappedMapping = await WhatsAppMapping.findOne({
+                where: {
+                  subAccountId,
+                  whatsappId: null  // Phone number stored but no WhatsApp ID yet
+                },
+                order: [['lastActivityAt', 'DESC']]
+              });
+
+              if (unmappedMapping) {
+                // Link this WhatsApp ID to the phone number
+                await unmappedMapping.update({
+                  whatsappId: fromNumber,
+                  contactName: pushName,
+                  lastActivityAt: new Date()
+                });
+                resolvedPhoneNumber = unmappedMapping.phoneNumber;
+                logger.info('Created WhatsApp ID mapping from recent outbound:', {
+                  whatsappId: fromNumber,
+                  phoneNumber: resolvedPhoneNumber,
+                  pushName
+                });
+              } else {
+                logger.warn('No unmapped phone number found to link WhatsApp ID:', { fromNumber, pushName });
+              }
+            }
+          }
+        }
+
+        // Use resolvedPhoneNumber for GHL sync
+        const phoneForSync = resolvedPhoneNumber;
+        logger.info('Phone number for GHL sync:', { original: fromNumber, resolved: phoneForSync, pushName });
+
         const subAccount = await SubAccount.findByPk(subAccountId);
 
         if (!subAccount) continue;
@@ -311,21 +378,21 @@ class WhatsAppService {
           metadata: { rawMessage: msg }
         });
 
-        logger.info(`Received message for ${subAccountId} from ${fromNumber}`);
+        logger.info(`Received message for ${subAccountId} from ${fromNumber} (resolved: ${phoneForSync})`);
 
         // Trigger webhook
         await webhookService.trigger(subAccountId, 'message.received', {
           messageId: message.id,
-          from: fromNumber,
+          from: phoneForSync,  // Use resolved phone number
           type: messageType,
           content,
           timestamp: new Date().toISOString()
         });
 
-        // Sync to GHL (async, don't wait)
+        // Sync to GHL using resolved phone number (async, don't wait)
         ghlService.syncMessageToGHL(
           subAccount,
-          fromNumber,
+          phoneForSync,  // Use resolved phone number for correct contact matching
           subAccount.phoneNumber || '',
           content,
           'inbound'
