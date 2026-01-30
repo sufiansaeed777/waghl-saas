@@ -229,7 +229,7 @@ router.get('/callback', async (req, res) => {
       `);
     }
 
-    // Update sub-account with GHL tokens (in case it already existed)
+    // Update sub-account with GHL tokens
     await subAccount.update({
       ghlAccessToken: tokenData.access_token,
       ghlRefreshToken: tokenData.refresh_token,
@@ -237,6 +237,24 @@ router.get('/callback', async (req, res) => {
       ghlLocationId: locationId || subAccount.ghlLocationId,
       ghlConnected: true
     });
+
+    // Fetch location details from GHL to get the actual location name
+    try {
+      // Reload subAccount to get updated tokens
+      await subAccount.reload();
+      const locationDetails = await ghlService.getLocation(subAccount, locationId);
+
+      if (locationDetails && locationDetails.name) {
+        logger.info(`Fetched location name from GHL: ${locationDetails.name}`);
+        await subAccount.update({
+          name: locationDetails.name,
+          ghlLocationName: locationDetails.name
+        });
+      }
+    } catch (error) {
+      logger.warn(`Failed to fetch location name from GHL, keeping default name:`, error.message);
+      // Don't fail the whole connection if we can't fetch the name
+    }
 
     logger.info(`GHL connected for sub-account ${subAccount.id}, location: ${locationId}`);
 

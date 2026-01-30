@@ -17,7 +17,8 @@ module.exports = (sequelize) => {
     },
     name: {
       type: DataTypes.STRING,
-      allowNull: false
+      allowNull: true,
+      defaultValue: 'Pending GHL Connection...'
     },
     phoneNumber: {
       type: DataTypes.STRING,

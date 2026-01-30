@@ -11,7 +11,6 @@ export default function SubAccounts() {
   const [subAccounts, setSubAccounts] = useState([])
   const [loading, setLoading] = useState(true)
   const [showCreateModal, setShowCreateModal] = useState(false)
-  const [newName, setNewName] = useState('')
   const [newLocationId, setNewLocationId] = useState('')
   const [creating, setCreating] = useState(false)
 
@@ -93,16 +92,61 @@ export default function SubAccounts() {
     setCreating(true)
 
     try {
-      await api.post('/sub-accounts', {
-        name: newName,
-        ghlLocationId: newLocationId || undefined
+      const { data } = await api.post('/sub-accounts', {
+        ghlLocationId: newLocationId
       })
-      toast.success('Sub-account created!')
+      const subAccountId = data.subAccount.id
+
+      toast.success('Sub-account created! Connecting to GHL...')
       setShowCreateModal(false)
-      setNewName('')
       setNewLocationId('')
       fetchSubAccounts()
       fetchSubscriptionInfo() // Refresh slot count
+
+      // Automatically start GHL OAuth connection
+      setTimeout(async () => {
+        try {
+          const { data: authData } = await api.get(`/ghl/auth-url/${subAccountId}`)
+
+          // Open OAuth in popup window
+          const width = 600
+          const height = 700
+          const left = (window.screen.width / 2) - (width / 2)
+          const top = (window.screen.height / 2) - (height / 2)
+
+          const popup = window.open(
+            authData.authUrl,
+            'GHL OAuth',
+            `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+          )
+
+          // Listen for OAuth result
+          const handleMessage = (event) => {
+            if (event.data?.type === 'GHL_OAUTH_RESULT') {
+              if (event.data.success) {
+                toast.success('GHL connected successfully! Location name updated.')
+                fetchSubAccounts() // Refresh to show updated name
+              } else {
+                toast.error(event.data.message || 'Failed to connect to GHL')
+              }
+              window.removeEventListener('message', handleMessage)
+            }
+          }
+          window.addEventListener('message', handleMessage)
+
+          // Check if popup was closed
+          const checkPopup = setInterval(() => {
+            if (popup && popup.closed) {
+              clearInterval(checkPopup)
+              window.removeEventListener('message', handleMessage)
+              fetchSubAccounts() // Refresh anyway
+            }
+          }, 1000)
+        } catch (err) {
+          toast.error('Failed to start GHL connection')
+        }
+      }, 500)
+
     } catch (error) {
       const errorData = error.response?.data
       if (error.response?.status === 402) {
@@ -378,7 +422,6 @@ export default function SubAccounts() {
               <button
                 onClick={() => {
                   setShowCreateModal(false)
-                  setNewName('')
                   setNewLocationId('')
                 }}
                 className="p-1 hover:bg-gray-100 rounded"
@@ -400,33 +443,24 @@ export default function SubAccounts() {
             <form onSubmit={createSubAccount}>
               <div className="mb-4">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Name
-                </label>
-                <input
-                  type="text"
-                  value={newName}
-                  onChange={(e) => setNewName(e.target.value)}
-                  required
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent"
-                  placeholder="e.g., Marketing Team"
-                />
-              </div>
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-700 mb-2">
                   <div className="flex items-center gap-2">
                     <MapPin size={16} />
-                    GHL Location ID
+                    GHL Location ID <span className="text-red-500">*</span>
                   </div>
                 </label>
                 <input
                   type="text"
                   value={newLocationId}
                   onChange={(e) => setNewLocationId(e.target.value)}
+                  required
                   className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-transparent font-mono"
                   placeholder="e.g., ve9EPM428h8vShlRW1KT"
                 />
                 <p className="text-xs text-gray-500 mt-1">
                   Find this in your GHL sub-account Settings → Business Info
+                </p>
+                <p className="text-xs text-blue-600 mt-2 font-medium">
+                  The sub-account name will be automatically fetched from GHL after connection.
                 </p>
               </div>
               <div className="flex justify-end gap-3">
@@ -434,7 +468,6 @@ export default function SubAccounts() {
                   type="button"
                   onClick={() => {
                     setShowCreateModal(false)
-                    setNewName('')
                     setNewLocationId('')
                   }}
                   className="px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg"
@@ -446,7 +479,7 @@ export default function SubAccounts() {
                   disabled={creating}
                   className="px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
                 >
-                  {creating ? 'Creating...' : 'Create'}
+                  {creating ? 'Creating & Connecting...' : 'Create & Connect to GHL'}
                 </button>
               </div>
             </form>

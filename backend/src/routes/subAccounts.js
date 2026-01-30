@@ -26,8 +26,9 @@ router.post('/', authenticateJWT, async (req, res) => {
   try {
     const { name, ghlLocationId } = req.body;
 
-    if (!name) {
-      return res.status(400).json({ error: 'Name is required' });
+    // GHL Location ID is now required (name will be fetched from GHL)
+    if (!ghlLocationId) {
+      return res.status(400).json({ error: 'GHL Location ID is required' });
     }
 
     // Check if user is admin or has unlimited access
@@ -61,34 +62,32 @@ router.post('/', authenticateJWT, async (req, res) => {
       }
     }
 
-    // Validate GHL Location ID if provided
-    if (ghlLocationId) {
-      // Format validation - GHL location IDs are alphanumeric, typically 20+ chars
-      if (!/^[a-zA-Z0-9]{10,50}$/.test(ghlLocationId)) {
-        return res.status(400).json({
-          error: 'Invalid GHL Location ID format',
-          message: 'Location ID should be alphanumeric (found in GHL Settings → Business Info)'
-        });
-      }
-
-      // Check for duplicates - same location ID shouldn't be used twice
-      const existingSubAccount = await SubAccount.findOne({
-        where: { ghlLocationId }
+    // Validate GHL Location ID format
+    if (!/^[a-zA-Z0-9]{10,50}$/.test(ghlLocationId)) {
+      return res.status(400).json({
+        error: 'Invalid GHL Location ID format',
+        message: 'Location ID should be alphanumeric (found in GHL Settings → Business Info)'
       });
-
-      if (existingSubAccount) {
-        return res.status(400).json({
-          error: 'GHL Location ID already in use',
-          message: 'This location is already connected to another sub-account'
-        });
-      }
     }
 
-    // Create sub-account (isPaid = true since they have a slot)
+    // Check for duplicates - same location ID shouldn't be used twice
+    const existingSubAccount = await SubAccount.findOne({
+      where: { ghlLocationId }
+    });
+
+    if (existingSubAccount) {
+      return res.status(400).json({
+        error: 'GHL Location ID already in use',
+        message: 'This location is already connected to another sub-account'
+      });
+    }
+
+    // Create sub-account with temporary name (will be updated from GHL)
+    // Name will be fetched from GHL when OAuth connection is successful
     const subAccount = await SubAccount.create({
       customerId: req.customer.id,
-      name,
-      ghlLocationId: ghlLocationId || null,
+      name: name || `Location ${ghlLocationId.substring(0, 8)}...`,
+      ghlLocationId: ghlLocationId,
       isPaid: true // All sub-accounts are paid now since they require slots
     });
 
