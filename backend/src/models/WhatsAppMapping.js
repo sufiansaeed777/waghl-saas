@@ -9,11 +9,8 @@ module.exports = (sequelize) => {
     },
     subAccountId: {
       type: DataTypes.UUID,
-      allowNull: false,
-      references: {
-        model: 'sub_accounts',
-        key: 'id'
-      }
+      allowNull: false
+      // Note: Foreign key relationship defined in models/index.js associations
     },
     // The real phone number (e.g., 393806510543)
     phoneNumber: {
