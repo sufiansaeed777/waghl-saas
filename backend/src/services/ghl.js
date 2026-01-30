@@ -182,37 +182,47 @@ class GHLService {
 
   // Get single location details
   async getLocation(entity, locationId) {
-    // Try multiple API versions as GHL has been inconsistent
-    const apiVersions = ['2021-07-28', '2021-04-15'];
+    // Try different endpoints - GHL API is inconsistent with location-scoped tokens
+    const endpoints = [
+      { path: `/locations/${locationId}`, desc: 'direct' },
+      { path: '/locations/', desc: 'current location' }
+    ];
 
-    for (const version of apiVersions) {
+    for (const endpoint of endpoints) {
       try {
-        logger.info(`Trying to fetch location with API version ${version}`, { locationId });
-        const response = await this.apiRequest(entity, 'GET', `/locations/${locationId}`, null, version);
+        logger.info(`Trying to fetch location via ${endpoint.desc}`, { locationId, path: endpoint.path });
+        const response = await this.apiRequest(entity, 'GET', endpoint.path);
 
+        // Check for location wrapper
         if (response && response.location) {
-          logger.info('Found location:', { id: response.location.id, name: response.location.name, version });
+          logger.info('Found location:', { id: response.location.id, name: response.location.name });
           return response.location;
         }
 
-        // Response might be the location directly without wrapper
-        if (response && response.name) {
-          logger.info('Found location (direct):', { id: response.id, name: response.name, version });
+        // Check for locations array (from /locations/ endpoint)
+        if (response && response.locations && response.locations.length > 0) {
+          const loc = response.locations.find(l => l.id === locationId) || response.locations[0];
+          logger.info('Found location in array:', { id: loc.id, name: loc.name });
+          return loc;
+        }
+
+        // Response might be the location directly
+        if (response && response.name && response.id) {
+          logger.info('Found location (direct):', { id: response.id, name: response.name });
           return response;
         }
 
-        logger.warn('Location response has no location data', { locationId, response, version });
+        logger.warn('Location response has no usable data', { locationId, endpoint: endpoint.desc });
       } catch (error) {
-        logger.warn(`GHL get location failed with version ${version}:`, {
+        logger.warn(`GHL get location failed via ${endpoint.desc}:`, {
           status: error.response?.status,
           locationId
         });
-        // Try next version
         continue;
       }
     }
 
-    logger.error('All API versions failed to fetch location', { locationId });
+    logger.error('All endpoints failed to fetch location', { locationId });
     return null;
   }
 
