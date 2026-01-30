@@ -129,6 +129,21 @@ export default function AdminDashboard() {
     }
   }
 
+  const toggleSubscription = async (subAccountId, isPaid) => {
+    const action = isPaid ? 'cancel' : 'resume'
+    if (!confirm(`Are you sure you want to ${action} subscription for this sub-account?`)) return
+
+    try {
+      const { data } = await api.put(`/admin/sub-accounts/${subAccountId}/payment`, {
+        isPaid: !isPaid
+      })
+      toast.success(data.message)
+      fetchData()
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to update subscription status')
+    }
+  }
+
   const openEditModal = (subAccount) => {
     setEditForm({
       name: subAccount.name || '',
@@ -581,8 +596,16 @@ export default function AdminDashboard() {
                                     <Gift size={18} />
                                   </button>
                                   <button
+                                    onClick={() => toggleSubscription(subAccount.id, subAccount.isPaid)}
+                                    className={`p-1 rounded ${subAccount.isPaid ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}
+                                    title={subAccount.isPaid ? 'Cancel subscription' : 'Resume subscription'}
+                                  >
+                                    {subAccount.isPaid ? <XCircle size={18} /> : <PlayCircle size={18} />}
+                                  </button>
+                                  <button
                                     onClick={() => toggleSubAccount(subAccount.id)}
                                     className="p-1 hover:bg-gray-100 rounded"
+                                    title={subAccount.isActive ? 'Suspend sub-account' : 'Activate sub-account'}
                                   >
                                     {subAccount.isActive ? (
                                       <ToggleRight className="text-green-500" size={20} />
@@ -671,8 +694,16 @@ export default function AdminDashboard() {
                         <Gift size={20} />
                       </button>
                       <button
+                        onClick={() => toggleSubscription(account.id, account.isPaid)}
+                        className={`p-2 rounded ${account.isPaid ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}
+                        title={account.isPaid ? 'Cancel subscription' : 'Resume subscription'}
+                      >
+                        {account.isPaid ? <XCircle size={20} /> : <PlayCircle size={20} />}
+                      </button>
+                      <button
                         onClick={() => toggleSubAccount(account.id)}
                         className="p-2 hover:bg-gray-100 rounded"
+                        title={account.isActive ? 'Suspend sub-account' : 'Activate sub-account'}
                       >
                         {account.isActive ? (
                           <ToggleRight className="text-green-500" size={24} />

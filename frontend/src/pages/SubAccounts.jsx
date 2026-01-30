@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, Pencil, X, ShoppingCart } from 'lucide-react'
+import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, Pencil, X, ShoppingCart, XCircle, PlayCircle } from 'lucide-react'
 
 export default function SubAccounts() {
   const { user } = useAuth()
@@ -170,6 +170,19 @@ export default function SubAccounts() {
       fetchSubscriptionInfo() // Refresh slot count
     } catch (error) {
       toast.error('Failed to delete sub-account')
+    }
+  }
+
+  const toggleSubAccount = async (id, isActive, name) => {
+    const action = isActive ? 'pause' : 'resume'
+    if (!confirm(`Are you sure you want to ${action} "${name}"?`)) return
+
+    try {
+      await api.put(`/sub-accounts/${id}`, { isActive: !isActive })
+      toast.success(`Sub-account ${isActive ? 'paused' : 'resumed'}`)
+      fetchSubAccounts()
+    } catch (error) {
+      toast.error(`Failed to ${action} sub-account`)
     }
   }
 
@@ -395,12 +408,21 @@ export default function SubAccounts() {
                       <Link
                         to={`/sub-accounts/${account.id}`}
                         className="p-2 text-gray-600 hover:text-primary-500 hover:bg-gray-100 rounded"
+                        title="View details"
                       >
                         <Eye size={18} />
                       </Link>
                       <button
+                        onClick={() => toggleSubAccount(account.id, account.isActive, account.name)}
+                        className={`p-2 rounded ${account.isActive ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}
+                        title={account.isActive ? 'Pause sub-account' : 'Resume sub-account'}
+                      >
+                        {account.isActive ? <XCircle size={18} /> : <PlayCircle size={18} />}
+                      </button>
+                      <button
                         onClick={() => deleteSubAccount(account.id, account.name)}
                         className="p-2 text-gray-600 hover:text-red-500 hover:bg-gray-100 rounded"
+                        title="Delete sub-account"
                       >
                         <Trash2 size={18} />
                       </button>
