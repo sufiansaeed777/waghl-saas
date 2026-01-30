@@ -302,15 +302,23 @@ class GHLService {
       // GHL API inbound message endpoint
       // Docs: https://marketplace.gohighlevel.com/docs/ghl/conversations/add-an-inbound-message
       // Required fields: conversationId OR contactId, type, body
-      const response = await this.apiRequest(customer, 'POST', `/conversations/messages/inbound`, {
+      const payload = {
         conversationId,
         type: 'SMS',
-        body: message  // GHL uses 'body' not 'message' for content
-      });
-      logger.info(`Added ${direction} message to GHL conversation ${conversationId}`);
+        body: message
+      };
+      logger.info('Calling GHL inbound message API:', { conversationId, messageLength: message?.length, payload });
+
+      const response = await this.apiRequest(customer, 'POST', `/conversations/messages/inbound`, payload);
+      logger.info(`Added ${direction} message to GHL conversation ${conversationId}`, { response });
       return response;
     } catch (error) {
-      logger.error('GHL add message error:', error.response?.data || error.message);
+      logger.error('GHL add message error:', {
+        error: error.response?.data || error.message,
+        status: error.response?.status,
+        conversationId,
+        payload: { conversationId, type: 'SMS', bodyLength: message?.length }
+      });
       // Don't throw - message logging to GHL is not critical
       return null;
     }
@@ -319,20 +327,32 @@ class GHLService {
   // Sync WhatsApp message to GHL
   async syncMessageToGHL(subAccount, fromNumber, toNumber, content, direction = 'inbound') {
     try {
+      logger.info('syncMessageToGHL called', {
+        subAccountId: subAccount.id,
+        fromNumber,
+        toNumber,
+        direction,
+        contentLength: content?.length,
+        ghlConnected: subAccount.ghlConnected,
+        hasAccessToken: !!subAccount.ghlAccessToken,
+        ghlLocationId: subAccount.ghlLocationId
+      });
+
       // Check if sub-account has GHL connected
       if (!subAccount.ghlConnected || !subAccount.ghlAccessToken) {
-        logger.debug('GHL not connected for sub-account, skipping sync');
+        logger.warn('GHL not connected for sub-account, skipping sync', { subAccountId: subAccount.id });
         return null;
       }
 
       // Check if sub-account has GHL location
       if (!subAccount.ghlLocationId) {
-        logger.debug('No GHL location linked to sub-account, skipping sync');
+        logger.warn('No GHL location linked to sub-account, skipping sync', { subAccountId: subAccount.id });
         return null;
       }
 
       // Determine the external phone number (not our WhatsApp number)
       const externalPhone = direction === 'inbound' ? fromNumber : toNumber;
+      logger.info('External phone for GHL sync:', { externalPhone, direction });
 
       // Get or create contact (using subAccount for API calls)
       const contact = await this.getOrCreateContact(
@@ -342,15 +362,18 @@ class GHLService {
       );
 
       if (!contact) {
-        logger.error('Failed to get/create GHL contact');
+        logger.error('Failed to get/create GHL contact', { externalPhone, locationId: subAccount.ghlLocationId });
         return null;
       }
+      logger.info('Got/created GHL contact:', { contactId: contact.id, contactName: contact.name });
 
       // Get or create conversation
       let conversations = await this.getConversations(subAccount, contact.id);
       let conversation = conversations[0];
+      logger.info('Got conversations:', { count: conversations.length, hasConversation: !!conversation });
 
       if (!conversation) {
+        logger.info('Creating new conversation for contact:', { contactId: contact.id });
         conversation = await this.createConversation(
           subAccount,
           subAccount.ghlLocationId,
@@ -360,18 +383,25 @@ class GHLService {
 
       // Add message to conversation
       if (conversation) {
-        await this.addMessageToConversation(
+        logger.info('Adding message to conversation:', { conversationId: conversation.id, direction });
+        const result = await this.addMessageToConversation(
           subAccount,
           conversation.id,
           content,
           direction
         );
-        logger.info(`Synced ${direction} message to GHL for ${externalPhone}`);
+        logger.info(`Synced ${direction} message to GHL for ${externalPhone}`, { result });
+      } else {
+        logger.error('No conversation found/created, cannot sync message');
       }
 
       return { contact, conversation };
     } catch (error) {
-      logger.error('GHL sync message error:', error);
+      logger.error('GHL sync message error:', {
+        error: error.message,
+        stack: error.stack,
+        subAccountId: subAccount.id
+      });
       return null;
     }
   }
