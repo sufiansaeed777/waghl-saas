@@ -218,7 +218,35 @@ class WhatsAppService {
         if (msg.key.remoteJid === 'status@broadcast') continue;
         if (msg.key.fromMe) continue;
 
-        const fromNumber = msg.key.remoteJid.split('@')[0];
+        // Extract phone number from remoteJid
+        // Handle both regular JIDs (phone@s.whatsapp.net) and LIDs (id@lid)
+        const remoteJid = msg.key.remoteJid;
+        const isLID = remoteJid.includes('@lid');
+        let fromNumber = remoteJid.split('@')[0];
+
+        // Log for debugging LID issues
+        logger.info('Incoming message JID info:', {
+          remoteJid,
+          isLID,
+          extractedNumber: fromNumber,
+          participant: msg.key.participant,
+          pushName: msg.pushName,
+          verifiedBizName: msg.verifiedBizName
+        });
+
+        // If it's a LID, try to get the real phone number from participant or other fields
+        if (isLID) {
+          // In group messages, participant contains the real JID
+          if (msg.key.participant) {
+            const participantNumber = msg.key.participant.split('@')[0];
+            if (!participantNumber.includes('lid')) {
+              fromNumber = participantNumber;
+              logger.info('Using participant number instead of LID:', { fromNumber });
+            }
+          }
+          // Note: For 1:1 chats with LID, we may not have the real number
+          // WhatsApp privacy feature - some users hide their phone numbers
+        }
         const subAccount = await SubAccount.findByPk(subAccountId);
 
         if (!subAccount) continue;
@@ -234,15 +262,39 @@ class WhatsAppService {
           content = msg.message.extendedTextMessage.text;
         } else if (msg.message?.imageMessage) {
           messageType = 'image';
-          content = msg.message.imageMessage.caption || '';
+          content = msg.message.imageMessage.caption || '[Image]';
         } else if (msg.message?.documentMessage) {
           messageType = 'document';
-          content = msg.message.documentMessage.fileName || '';
+          content = msg.message.documentMessage.fileName || '[Document]';
         } else if (msg.message?.audioMessage) {
           messageType = 'audio';
+          content = '[Voice message]';
         } else if (msg.message?.videoMessage) {
           messageType = 'video';
-          content = msg.message.videoMessage.caption || '';
+          content = msg.message.videoMessage.caption || '[Video]';
+        } else if (msg.message?.stickerMessage) {
+          messageType = 'sticker';
+          content = '[Sticker]';
+        } else if (msg.message?.contactMessage) {
+          messageType = 'contact';
+          content = msg.message.contactMessage.displayName || '[Contact]';
+        } else if (msg.message?.locationMessage) {
+          messageType = 'location';
+          content = '[Location shared]';
+        } else if (msg.message?.reactionMessage) {
+          // Skip reactions - they don't need to be synced as separate messages
+          logger.info('Skipping reaction message');
+          continue;
+        } else if (msg.message?.protocolMessage || msg.message?.senderKeyDistributionMessage) {
+          // Skip protocol/system messages
+          continue;
+        } else {
+          // Log unrecognized message types for debugging
+          logger.warn('Unrecognized message type:', {
+            messageKeys: msg.message ? Object.keys(msg.message) : 'no message',
+            subAccountId
+          });
+          content = '[Message]';
         }
 
         // Store message
