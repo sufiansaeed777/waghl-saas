@@ -568,6 +568,19 @@ export default function AdminDashboard() {
                                   </div>
                                 </div>
                                 <div className="flex items-center gap-3">
+                                  {customer.role === 'admin' || customer.hasUnlimitedAccess || subAccount.isGifted ? (
+                                    <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700">
+                                      Free (Unlimited)
+                                    </span>
+                                  ) : customer.subscriptionQuantity >= 11 ? (
+                                    <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                                      €19/mo
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
+                                      €29/mo
+                                    </span>
+                                  )}
                                   <span className={`text-xs px-2 py-1 rounded ${
                                     subAccount.status === 'connected' ? 'bg-green-100 text-green-700' :
                                     subAccount.status === 'qr_ready' ? 'bg-yellow-100 text-yellow-700' :
@@ -578,7 +591,7 @@ export default function AdminDashboard() {
                                   {subAccount.isGifted && (
                                     <span className="flex items-center gap-1 text-xs px-2 py-1 rounded bg-yellow-100 text-yellow-700">
                                       <Gift size={12} />
-                                      Free
+                                      Gifted
                                     </span>
                                   )}
                                   <button
@@ -640,6 +653,7 @@ export default function AdminDashboard() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Customer</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location ID</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
@@ -647,7 +661,7 @@ export default function AdminDashboard() {
             <tbody className="divide-y">
               {filteredSubAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan="6" className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan="7" className="px-6 py-12 text-center text-gray-500">
                     No sub-accounts found matching your filters
                   </td>
                 </tr>
@@ -660,6 +674,21 @@ export default function AdminDashboard() {
                   </td>
                   <td className="px-6 py-4 text-gray-600">{account.phoneNumber || '-'}</td>
                   <td className="px-6 py-4 text-gray-600 font-mono text-sm">{account.ghlLocationId || '-'}</td>
+                  <td className="px-6 py-4">
+                    {account.customer?.role === 'admin' || account.customer?.hasUnlimitedAccess || account.isGifted ? (
+                      <span className="text-xs px-2 py-1 rounded bg-purple-100 text-purple-700">
+                        Free (Unlimited)
+                      </span>
+                    ) : account.customer?.subscriptionQuantity >= 11 ? (
+                      <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700">
+                        €19/mo
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-1 rounded bg-gray-100 text-gray-700">
+                        €29/mo
+                      </span>
+                    )}
+                  </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
                       <span className={`text-xs px-2 py-1 rounded ${

@@ -364,6 +364,7 @@ export default function SubAccounts() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location ID</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
@@ -371,7 +372,7 @@ export default function SubAccounts() {
             <tbody className="divide-y">
               {filteredSubAccounts.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-12 text-center text-gray-500">
+                  <td colSpan={6} className="px-6 py-12 text-center text-gray-500">
                     No sub-accounts found matching your filters
                   </td>
                 </tr>
@@ -385,6 +386,21 @@ export default function SubAccounts() {
                   </td>
                   <td className="px-6 py-4 text-gray-600 text-sm font-mono">
                     {account.ghlLocationId || '-'}
+                  </td>
+                  <td className="px-6 py-4">
+                    {isAdmin || account.isGifted ? (
+                      <span className="text-sm px-2 py-1 rounded bg-purple-100 text-purple-700">
+                        Free (Unlimited)
+                      </span>
+                    ) : subscriptionInfo?.subscriptionQuantity >= 11 ? (
+                      <span className="text-sm px-2 py-1 rounded bg-blue-100 text-blue-700">
+                        €19/mo
+                      </span>
+                    ) : (
+                      <span className="text-sm px-2 py-1 rounded bg-gray-100 text-gray-700">
+                        €29/mo
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4">
                     <span className={`text-sm px-2 py-1 rounded ${
