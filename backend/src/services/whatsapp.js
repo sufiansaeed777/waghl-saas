@@ -234,9 +234,9 @@ class WhatsAppService {
           verifiedBizName: msg.verifiedBizName
         });
 
-        // If it's a LID, try to get the real phone number from participant or other fields
+        // If it's a LID, try to get the real phone number
         if (isLID) {
-          // In group messages, participant contains the real JID
+          // Method 1: Check if participant contains real JID (group messages)
           if (msg.key.participant) {
             const participantNumber = msg.key.participant.split('@')[0];
             if (!participantNumber.includes('lid')) {
@@ -244,8 +244,29 @@ class WhatsAppService {
               logger.info('Using participant number instead of LID:', { fromNumber });
             }
           }
-          // Note: For 1:1 chats with LID, we may not have the real number
-          // WhatsApp privacy feature - some users hide their phone numbers
+
+          // Method 2: Try Baileys' built-in LID mapping (v6.7.19+)
+          if (fromNumber.includes('lid') || !/^[1-9]\d{9,14}$/.test(fromNumber)) {
+            const socket = connections.get(subAccountId);
+            if (socket && socket.signalRepository && socket.signalRepository.lidMapping) {
+              try {
+                const lidMapping = socket.signalRepository.lidMapping;
+                // Try to get phone number from LID using Baileys internal store
+                if (typeof lidMapping.getPNForLID === 'function') {
+                  const phoneJid = await lidMapping.getPNForLID(remoteJid);
+                  if (phoneJid) {
+                    const resolvedNumber = phoneJid.split('@')[0];
+                    if (/^[1-9]\d{9,14}$/.test(resolvedNumber)) {
+                      fromNumber = resolvedNumber;
+                      logger.info('Resolved LID via Baileys lidMapping:', { lid: remoteJid, phoneNumber: fromNumber });
+                    }
+                  }
+                }
+              } catch (lidError) {
+                logger.warn('Baileys lidMapping lookup failed:', lidError.message);
+              }
+            }
+          }
         }
 
         // Check if fromNumber is a valid phone number or a WhatsApp internal ID
