@@ -142,28 +142,33 @@ class GHLService {
   async apiRequest(entity, method, endpoint, data = null, apiVersion = '2021-07-28') {
     const accessToken = await this.getValidAccessToken(entity);
 
-    try {
-      const response = await axios({
-        method,
-        url: `${GHL_API_BASE}${endpoint}`,
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'Version': apiVersion
-        },
-        data,
-        timeout: 30000 // 30 second timeout
-      });
+    // Build request config - only include data and Content-Type for non-GET requests
+    const config = {
+      method,
+      url: `${GHL_API_BASE}${endpoint}`,
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Accept': 'application/json',
+        'Version': apiVersion
+      },
+      timeout: 30000
+    };
 
+    // Only add Content-Type and data for requests that have a body
+    if (method.toUpperCase() !== 'GET' && data !== null) {
+      config.headers['Content-Type'] = 'application/json';
+      config.data = data;
+    }
+
+    try {
+      const response = await axios(config);
       return response.data;
     } catch (error) {
       logger.error(`GHL API error (${endpoint}):`, {
         message: error.message,
         status: error.response?.status,
         statusText: error.response?.statusText,
-        data: error.response?.data,
-        headers: error.response?.headers
+        data: error.response?.data
       });
       throw error;
     }
