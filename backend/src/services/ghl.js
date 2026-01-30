@@ -349,10 +349,15 @@ class GHLService {
       // GHL API inbound message endpoint
       // Docs: https://marketplace.gohighlevel.com/docs/ghl/conversations/add-an-inbound-message
       // Required fields: conversationId OR contactId, type, body
+      // Additional fields for proper display: contentType, direction, messageType
       const payload = {
         conversationId,
         type: 'SMS',
-        body: message
+        message: message,  // Some GHL versions use 'message' instead of 'body'
+        body: message,
+        contentType: 'text/plain',
+        direction: direction,
+        messageType: 'SMS'
       };
       logger.info('Calling GHL inbound message API:', { conversationId, messageLength: message?.length, payload });
 
