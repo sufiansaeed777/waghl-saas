@@ -115,13 +115,60 @@ router.get('/callback', async (req, res) => {
           logger.warn('SubAccount has no ghlLocationId configured - cannot connect to any GHL location', { subAccountId });
           // Don't set subAccount - will trigger error below
         } else if (foundSubAccount.ghlLocationId !== locationId) {
-          // LocationId is configured but doesn't match incoming
+          // LocationId is configured but doesn't match incoming - return specific error
           logger.warn('SubAccount ghlLocationId mismatch', {
             subAccountId,
             configured: foundSubAccount.ghlLocationId,
             incoming: locationId
           });
-          // Don't set subAccount - will trigger error below
+          const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+          return res.send(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <meta charset="UTF-8">
+              <title>Location Mismatch</title>
+              <style>
+                body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); }
+                .box { background: white; padding: 40px; border-radius: 16px; text-align: center; max-width: 450px; }
+                .icon { font-size: 48px; margin-bottom: 16px; }
+                h2 { color: #d97706; margin: 0 0 12px 0; }
+                p { color: #666; margin: 0 0 8px 0; font-size: 14px; }
+                .ids { background: #fef3c7; padding: 12px; border-radius: 8px; margin: 16px 0; font-family: monospace; font-size: 12px; }
+              </style>
+            </head>
+            <body>
+              <div class="box">
+                <div class="icon">⚠️</div>
+                <h2>Wrong Location Selected</h2>
+                <p>You selected a different GHL location than the one configured for this sub-account.</p>
+                <div class="ids">
+                  <p><strong>Expected:</strong> ${foundSubAccount.ghlLocationId}</p>
+                  <p><strong>Selected:</strong> ${locationId}</p>
+                </div>
+                <p>Please try again and select the correct location in GHL.</p>
+              </div>
+              <script>
+                const result = {
+                  type: 'GHL_OAUTH_RESULT',
+                  success: false,
+                  error: 'location_mismatch',
+                  message: 'Wrong GHL location selected. Please select the location matching ID: ${foundSubAccount.ghlLocationId}',
+                  expected: '${foundSubAccount.ghlLocationId}',
+                  selected: '${locationId}'
+                };
+                if (window.opener) {
+                  window.opener.postMessage(result, '*');
+                  setTimeout(() => { try { window.close(); } catch(e) {} }, 3000);
+                } else {
+                  setTimeout(() => {
+                    window.location.href = '${frontendUrl}/sub-accounts?ghl_error=location_mismatch';
+                  }, 3000);
+                }
+              </script>
+            </body>
+            </html>
+          `);
         } else {
           // LocationId matches - allow connection
           subAccount = foundSubAccount;
@@ -185,7 +232,10 @@ router.get('/callback', async (req, res) => {
 
     if (!subAccount) {
       logger.error('No SubAccount found for this GHL location', { locationId, stateValid });
-      // Send message to opener window and close popup
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+      const errorMessage = encodeURIComponent('Location ID mismatch. The GHL location does not match any sub-account.');
+
+      // Send message to opener window and redirect
       return res.send(`
         <!DOCTYPE html>
         <html>
@@ -194,35 +244,36 @@ router.get('/callback', async (req, res) => {
           <title>Connection Failed</title>
           <style>
             body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%); }
-            .box { background: white; padding: 40px; border-radius: 16px; text-align: center; max-width: 500px; }
-            .spinner { width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #ef4444; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
-            @keyframes spin { to { transform: rotate(360deg); } }
-            p { color: #666; }
+            .box { background: white; padding: 40px; border-radius: 16px; text-align: center; max-width: 400px; }
+            .icon { font-size: 48px; margin-bottom: 16px; }
+            h2 { color: #ef4444; margin: 0 0 12px 0; }
+            p { color: #666; margin: 0 0 8px 0; }
           </style>
         </head>
         <body>
           <div class="box">
-            <div class="spinner"></div>
-            <p>Closing window...</p>
+            <div class="icon">❌</div>
+            <h2>Connection Failed</h2>
+            <p>Redirecting back to dashboard...</p>
           </div>
           <script>
-            // Send error to opener window
             const result = {
               type: 'GHL_OAUTH_RESULT',
               success: false,
               error: 'location_not_configured',
-              message: 'This GHL location is not set up in our system yet. Please contact your administrator.',
+              message: 'Location ID mismatch. The GHL location does not match any sub-account.',
               locationId: '${locationId || ''}'
             };
 
             if (window.opener) {
               window.opener.postMessage(result, '*');
-              try { window.close(); } catch(e) {}
+              setTimeout(() => { try { window.close(); } catch(e) {} }, 500);
+            } else {
+              // No opener - redirect to frontend
+              setTimeout(() => {
+                window.location.href = '${frontendUrl}/sub-accounts?ghl_error=${errorMessage}';
+              }, 1500);
             }
-            // Always show error message after short delay
-            setTimeout(() => {
-              document.body.innerHTML = '<div class="box"><h1 style="color:#ef4444">Location Not Configured</h1><p>This GHL location is not set up yet.</p><p>Location ID: ${locationId || 'Unknown'}</p><p>Please contact your service provider to activate this location.</p><button onclick="window.close()" style="margin-top:20px;padding:10px 20px;background:#ef4444;color:white;border:none;border-radius:8px;cursor:pointer;">Close Window</button></div>';
-            }, 500);
           </script>
         </body>
         </html>

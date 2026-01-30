@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
@@ -13,6 +13,8 @@ export default function SubAccounts() {
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [newLocationId, setNewLocationId] = useState('')
   const [creating, setCreating] = useState(false)
+  const [searchParams] = useSearchParams()
+  const navigate = useNavigate()
 
   // Subscription info
   const [subscriptionInfo, setSubscriptionInfo] = useState(null)
@@ -25,6 +27,29 @@ export default function SubAccounts() {
   // Edit modal state
   const [editModal, setEditModal] = useState({ open: false, subAccount: null })
   const [editForm, setEditForm] = useState({ name: '', ghlLocationId: '' })
+
+  // Handle URL params for GHL connection results
+  useEffect(() => {
+    const ghlError = searchParams.get('ghl_error')
+    const subscriptionStatus = searchParams.get('subscription')
+
+    if (ghlError) {
+      if (ghlError === 'location_mismatch') {
+        toast.error('Wrong GHL location selected. Please select the correct location.')
+      } else {
+        toast.error(decodeURIComponent(ghlError) || 'GHL connection failed')
+      }
+      navigate('/sub-accounts', { replace: true })
+    }
+
+    if (subscriptionStatus === 'success') {
+      toast.success('Subscription activated successfully!')
+      navigate('/sub-accounts', { replace: true })
+    } else if (subscriptionStatus === 'cancelled') {
+      toast.error('Subscription checkout was cancelled')
+      navigate('/sub-accounts', { replace: true })
+    }
+  }, [searchParams, navigate])
 
   useEffect(() => {
     fetchSubAccounts()
