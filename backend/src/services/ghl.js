@@ -270,6 +270,41 @@ class GHLService {
     }
   }
 
+  // Get contact by name (for matching when phone number is unavailable)
+  async getContactByName(customer, locationId, name) {
+    try {
+      if (!name || name.trim().length === 0) {
+        return null;
+      }
+
+      const params = new URLSearchParams({
+        locationId,
+        query: name.trim()
+      });
+
+      const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
+      const contacts = response.contacts || [];
+
+      // Find exact or close name match (case-insensitive)
+      const normalizedName = name.trim().toLowerCase();
+      return contacts.find(c => {
+        const contactName = (c.name || c.firstName || '').toLowerCase();
+        const contactFirstName = (c.firstName || '').toLowerCase();
+        const contactLastName = (c.lastName || '').toLowerCase();
+        const fullName = `${contactFirstName} ${contactLastName}`.trim().toLowerCase();
+
+        return contactName === normalizedName ||
+               contactFirstName === normalizedName ||
+               fullName === normalizedName ||
+               contactName.includes(normalizedName) ||
+               normalizedName.includes(contactName);
+      }) || null;
+    } catch (error) {
+      logger.error('GHL get contact by name error:', error);
+      return null;
+    }
+  }
+
   // Create contact in GHL
   async createContact(customer, locationId, contactData) {
     try {
@@ -377,13 +412,15 @@ class GHLService {
   }
 
   // Sync WhatsApp message to GHL
-  async syncMessageToGHL(subAccount, fromNumber, toNumber, content, direction = 'inbound') {
+  // contactName is optional - used for name-based matching when phone is unavailable (WhatsApp LID)
+  async syncMessageToGHL(subAccount, fromNumber, toNumber, content, direction = 'inbound', contactName = null) {
     try {
       logger.info('syncMessageToGHL called', {
         subAccountId: subAccount.id,
         fromNumber,
         toNumber,
         direction,
+        contactName,
         contentLength: content?.length,
         ghlConnected: subAccount.ghlConnected,
         hasAccessToken: !!subAccount.ghlAccessToken,
@@ -404,14 +441,62 @@ class GHLService {
 
       // Determine the external phone number (not our WhatsApp number)
       const externalPhone = direction === 'inbound' ? fromNumber : toNumber;
-      logger.info('External phone for GHL sync:', { externalPhone, direction });
+      logger.info('External phone for GHL sync:', { externalPhone, direction, contactName });
 
-      // Get or create contact (using subAccount for API calls)
-      const contact = await this.getOrCreateContact(
-        subAccount,
-        subAccount.ghlLocationId,
-        externalPhone
-      );
+      // Check if externalPhone is a valid phone number or a WhatsApp internal ID
+      const isValidPhoneNumber = /^[1-9]\d{9,14}$/.test(externalPhone) && externalPhone.length <= 15;
+      let contact = null;
+
+      if (isValidPhoneNumber) {
+        // Standard flow: get or create contact by phone number
+        contact = await this.getOrCreateContact(
+          subAccount,
+          subAccount.ghlLocationId,
+          externalPhone
+        );
+      } else {
+        // WhatsApp internal ID - try name-based matching first
+        logger.info('External phone appears to be WhatsApp ID, trying name-based matching', {
+          externalPhone,
+          contactName
+        });
+
+        if (contactName) {
+          // Try to find existing contact by name
+          contact = await this.getContactByName(
+            subAccount,
+            subAccount.ghlLocationId,
+            contactName
+          );
+
+          if (contact) {
+            logger.info('Found GHL contact by name:', { contactId: contact.id, contactName: contact.name });
+          }
+        }
+
+        if (!contact) {
+          // No name match found - create a contact with the name (or a placeholder)
+          // Don't use the WhatsApp internal ID as phone since it would create wrong contacts
+          const displayName = contactName || `WhatsApp Contact`;
+          logger.info('Creating GHL contact by name (no phone):', { displayName });
+          try {
+            contact = await this.createContact(subAccount, subAccount.ghlLocationId, {
+              name: displayName,
+              source: 'GHLWA Connector (WhatsApp)'
+            });
+            logger.info('Created GHL contact by name:', { contactId: contact.id, contactName: contact.name });
+          } catch (createError) {
+            logger.error('Failed to create contact by name:', createError.message);
+            // As last resort, create with placeholder phone (better than nothing)
+            contact = await this.getOrCreateContact(
+              subAccount,
+              subAccount.ghlLocationId,
+              externalPhone,
+              displayName
+            );
+          }
+        }
+      }
 
       if (!contact) {
         logger.error('Failed to get/create GHL contact', { externalPhone, locationId: subAccount.ghlLocationId });
