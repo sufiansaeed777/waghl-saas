@@ -174,33 +174,33 @@ class GHLService {
   }
 
   // Get single location details
-  // Note: Location-scoped tokens can't use /locations/{id} endpoint
-  // Must use /locations/search instead
   async getLocation(entity, locationId) {
     try {
-      // For location-scoped tokens, use /locations/search
-      const response = await this.apiRequest(entity, 'GET', '/locations/search');
-      const locations = response.locations || [];
+      // Try direct location endpoint first (works with locations.readonly scope)
+      const response = await this.apiRequest(entity, 'GET', `/locations/${locationId}`);
 
-      // Find the matching location
-      const location = locations.find(loc => loc.id === locationId);
-
-      if (location) {
-        logger.info('Found location via search:', { id: location.id, name: location.name });
-        return location;
+      if (response && response.location) {
+        logger.info('Found location:', { id: response.location.id, name: response.location.name });
+        return response.location;
       }
 
-      // If only one location and locationId matches, return it
-      if (locations.length === 1) {
-        logger.info('Single location found:', { id: locations[0].id, name: locations[0].name });
-        return locations[0];
+      // Response might be the location directly without wrapper
+      if (response && response.name) {
+        logger.info('Found location (direct):', { id: response.id, name: response.name });
+        return response;
       }
 
-      logger.warn('Location not found in search results', { locationId, foundCount: locations.length });
+      logger.warn('Location response has no location data', { locationId, response });
       return null;
     } catch (error) {
-      logger.error('GHL get location error:', error.response?.data || error.message);
-      throw new Error('Failed to fetch GHL location');
+      logger.error('GHL get location error:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        locationId
+      });
+      // Don't throw - let the caller handle gracefully
+      return null;
     }
   }
 
