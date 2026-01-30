@@ -34,8 +34,8 @@ Message.belongsTo(SubAccount, { foreignKey: 'subAccountId', as: 'subAccount' });
 SubAccount.hasOne(Webhook, { foreignKey: 'subAccountId', as: 'webhook' });
 Webhook.belongsTo(SubAccount, { foreignKey: 'subAccountId', as: 'subAccount' });
 
-SubAccount.hasMany(WhatsAppMapping, { foreignKey: 'subAccountId', as: 'whatsappMappings' });
-WhatsAppMapping.belongsTo(SubAccount, { foreignKey: 'subAccountId', as: 'subAccount' });
+SubAccount.hasMany(WhatsAppMapping, { foreignKey: 'subAccountId', as: 'whatsappMappings', constraints: false });
+WhatsAppMapping.belongsTo(SubAccount, { foreignKey: 'subAccountId', as: 'subAccount', constraints: false });
 
 module.exports = {
   sequelize,
