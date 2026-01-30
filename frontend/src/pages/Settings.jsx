@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { CreditCard, ExternalLink, Link, Copy } from 'lucide-react'
+import { CreditCard, ExternalLink, Link, Copy, Clock } from 'lucide-react'
 
 export default function Settings() {
   const { user, fetchUser } = useAuth()
@@ -17,6 +17,21 @@ export default function Settings() {
   })
   const [saving, setSaving] = useState(false)
   const [changingPassword, setChangingPassword] = useState(false)
+  const [subscriptionInfo, setSubscriptionInfo] = useState(null)
+
+  useEffect(() => {
+    const fetchSubscriptionInfo = async () => {
+      try {
+        const { data } = await api.get('/billing/subscription-info')
+        setSubscriptionInfo(data)
+      } catch (error) {
+        console.error('Failed to fetch subscription info:', error)
+      }
+    }
+    if (!isAdmin) {
+      fetchSubscriptionInfo()
+    }
+  }, [isAdmin])
 
   const openBillingPortal = async () => {
     try {
@@ -80,7 +95,12 @@ export default function Settings() {
           <div className="flex items-center justify-between">
             <div>
               <p className="text-gray-600">
-                {user?.subscriptionStatus === 'active' ? (
+                {user?.subscriptionStatus === 'trialing' ? (
+                  <span className="flex items-center gap-2 text-blue-600 font-medium">
+                    <Clock size={18} />
+                    Free Trial - {subscriptionInfo?.trialDaysRemaining || 0} days remaining
+                  </span>
+                ) : user?.subscriptionStatus === 'active' ? (
                   <span className="text-green-600 font-medium">Your subscription is active</span>
                 ) : user?.subscriptionStatus === 'canceling' ? (
                   <span className="text-yellow-600 font-medium">Subscription canceling at end of billing period</span>
@@ -91,7 +111,9 @@ export default function Settings() {
                 )}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                {user?.subscriptionStatus === 'canceling'
+                {user?.subscriptionStatus === 'trialing'
+                  ? `You have ${subscriptionInfo?.subscriptionQuantity || 3} sub-account slots during your trial. Subscribe to continue after trial ends.`
+                  : user?.subscriptionStatus === 'canceling'
                   ? 'Your access will continue until the end of your current billing period. You can resume anytime.'
                   : 'Manage your subscription, payment methods, and invoices'
                 }
@@ -112,7 +134,7 @@ export default function Settings() {
                 className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
               >
                 <CreditCard size={18} />
-                Subscribe Now
+                {user?.subscriptionStatus === 'trialing' ? 'Subscribe Now' : 'Subscribe Now'}
               </button>
             )}
           </div>

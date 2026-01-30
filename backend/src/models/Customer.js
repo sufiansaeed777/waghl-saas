@@ -63,6 +63,15 @@ module.exports = (sequelize) => {
       type: DataTypes.INTEGER,
       defaultValue: 0
     },
+    // Free trial fields
+    trialEndsAt: {
+      type: DataTypes.DATE,
+      allowNull: true
+    },
+    hasUsedTrial: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
     isActive: {
       type: DataTypes.BOOLEAN,
       defaultValue: true

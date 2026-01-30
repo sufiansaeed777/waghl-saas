@@ -285,8 +285,32 @@ export default function SubAccounts() {
         </button>
       </div>
 
-      {/* Subscription Info Banner - for regular users */}
-      {!isAdmin && subscriptionInfo && (
+      {/* Trial Banner - for users on trial */}
+      {!isAdmin && subscriptionInfo?.isTrialing && (
+        <div className="mb-6 p-4 rounded-lg border bg-blue-50 border-blue-200">
+          <div className="flex items-center justify-between flex-wrap gap-4">
+            <div>
+              <p className="font-medium text-blue-900">
+                Free Trial - {subscriptionInfo.trialDaysRemaining} day{subscriptionInfo.trialDaysRemaining !== 1 ? 's' : ''} remaining
+              </p>
+              <p className="text-sm text-blue-700 mt-1">
+                You have {subscriptionInfo.subscriptionQuantity} sub-account slot{subscriptionInfo.subscriptionQuantity !== 1 ? 's' : ''} during your trial. Subscribe before it ends to keep your sub-accounts active.
+              </p>
+            </div>
+            <button
+              onClick={handleBuySlot}
+              disabled={buyingSlot}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+            >
+              <CreditCard size={18} />
+              {buyingSlot ? 'Processing...' : 'Subscribe Now'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Subscription Info Banner - for regular users (not on trial) */}
+      {!isAdmin && subscriptionInfo && !subscriptionInfo.isTrialing && (
         <div className={`mb-6 p-4 rounded-lg border ${
           subscriptionInfo.availableSlots > 0
             ? 'bg-green-50 border-green-200'

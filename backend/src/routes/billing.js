@@ -47,7 +47,7 @@ router.post('/subscribe', authenticateJWT, async (req, res) => {
   }
 });
 
-// Get subscription info (slots available, pricing)
+// Get subscription info (slots available, pricing, trial info)
 router.get('/subscription-info', authenticateJWT, async (req, res) => {
   try {
     // Admin/unlimited users have unlimited slots
@@ -59,12 +59,31 @@ router.get('/subscription-info', authenticateJWT, async (req, res) => {
         nextSlotPrice: 0,
         isVolumeEligible: false,
         planType: 'free',
-        hasUnlimitedAccess: true
+        hasUnlimitedAccess: true,
+        isTrialing: false,
+        trialEndsAt: null,
+        trialDaysRemaining: null
       });
     }
 
     const info = await stripeService.getSubscriptionInfo(req.customer);
-    res.json(info);
+
+    // Add trial info
+    const isTrialing = req.customer.subscriptionStatus === 'trialing';
+    let trialDaysRemaining = null;
+    if (isTrialing && req.customer.trialEndsAt) {
+      const now = new Date();
+      const trialEnd = new Date(req.customer.trialEndsAt);
+      trialDaysRemaining = Math.max(0, Math.ceil((trialEnd - now) / (1000 * 60 * 60 * 24)));
+    }
+
+    res.json({
+      ...info,
+      isTrialing,
+      trialEndsAt: req.customer.trialEndsAt,
+      trialDaysRemaining,
+      hasUsedTrial: req.customer.hasUsedTrial
+    });
   } catch (error) {
     logger.error('Get subscription info error:', error);
     res.status(500).json({ error: 'Failed to get subscription info' });

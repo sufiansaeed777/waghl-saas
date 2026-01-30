@@ -244,11 +244,17 @@ class StripeService {
               subscriptionQuantity = parseInt(newQuantity);
             }
 
+            // If user was on trial, mark trial as used
+            const wasTrialing = customer.subscriptionStatus === 'trialing';
+
             await customer.update({
               subscriptionStatus: 'active',
               subscriptionId: session.subscription,
               subscriptionQuantity: subscriptionQuantity,
-              planType: subscriptionQuantity >= 11 ? 'volume' : 'standard'
+              planType: subscriptionQuantity >= 11 ? 'volume' : 'standard',
+              // Clear trial fields when converting to paid
+              trialEndsAt: null,
+              hasUsedTrial: wasTrialing ? true : customer.hasUsedTrial
             });
           }
 

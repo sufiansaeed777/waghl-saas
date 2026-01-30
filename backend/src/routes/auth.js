@@ -24,12 +24,16 @@ router.post('/register', async (req, res) => {
       return res.status(400).json({ error: 'Email already registered' });
     }
 
-    // Create customer
+    // Create customer with 7-day free trial
+    const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
     const customer = await Customer.create({
       email,
       password,
       name,
-      company
+      company,
+      subscriptionStatus: 'trialing',
+      subscriptionQuantity: 3, // 3 sub-accounts during trial
+      trialEndsAt
     });
 
     const token = generateToken(customer);

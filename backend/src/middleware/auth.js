@@ -80,12 +80,37 @@ const requireAdmin = (req, res, next) => {
 };
 
 // Require active subscription middleware
-const requireActiveSubscription = (req, res, next) => {
+const requireActiveSubscription = async (req, res, next) => {
   const validStatuses = ['active', 'trialing'];
 
   // Admin bypass
   if (req.customer.role === 'admin') {
     return next();
+  }
+
+  // Check if trial has expired
+  if (req.customer.subscriptionStatus === 'trialing' && req.customer.trialEndsAt) {
+    if (new Date(req.customer.trialEndsAt) < new Date()) {
+      // Trial expired - update status and mark trial as used
+      await req.customer.update({
+        subscriptionStatus: 'inactive',
+        subscriptionQuantity: 0,
+        hasUsedTrial: true
+      });
+
+      // Also disable all non-gifted sub-accounts
+      await SubAccount.update(
+        { isPaid: false },
+        { where: { customerId: req.customer.id, isGifted: false } }
+      );
+
+      return res.status(402).json({
+        error: 'Trial expired',
+        message: 'Your free trial has ended. Please subscribe to continue.',
+        subscriptionStatus: 'inactive',
+        trialExpired: true
+      });
+    }
   }
 
   if (!validStatuses.includes(req.customer.subscriptionStatus)) {
