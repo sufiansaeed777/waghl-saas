@@ -82,21 +82,28 @@ export default function Settings() {
               <p className="text-gray-600">
                 {user?.subscriptionStatus === 'active' ? (
                   <span className="text-green-600 font-medium">Your subscription is active</span>
+                ) : user?.subscriptionStatus === 'canceling' ? (
+                  <span className="text-yellow-600 font-medium">Subscription canceling at end of billing period</span>
+                ) : user?.subscriptionStatus === 'past_due' ? (
+                  <span className="text-red-600 font-medium">Payment past due - please update payment method</span>
                 ) : (
                   <span className="text-gray-500">No active subscription</span>
                 )}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                Manage your subscription, payment methods, and invoices
+                {user?.subscriptionStatus === 'canceling'
+                  ? 'Your access will continue until the end of your current billing period. You can resume anytime.'
+                  : 'Manage your subscription, payment methods, and invoices'
+                }
               </p>
             </div>
-            {user?.subscriptionStatus === 'active' ? (
+            {user?.subscriptionStatus === 'active' || user?.subscriptionStatus === 'canceling' || user?.subscriptionStatus === 'past_due' ? (
               <button
                 onClick={openBillingPortal}
                 className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 transition-colors"
               >
                 <CreditCard size={18} />
-                Manage Billing
+                {user?.subscriptionStatus === 'canceling' ? 'Resume or Manage' : 'Manage Billing'}
                 <ExternalLink size={14} />
               </button>
             ) : (
