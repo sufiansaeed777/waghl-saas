@@ -260,8 +260,23 @@ class EmailService {
   }
 
   // Subscription activated
-  async sendSubscriptionActivated(email, name, planName) {
+  async sendSubscriptionActivated(email, name, planName, subAccounts = []) {
     const subject = 'Subscription Activated!';
+
+    // Build sub-accounts list if provided
+    let subAccountsHtml = '';
+    if (subAccounts && subAccounts.length > 0) {
+      const subAccountsList = subAccounts.map(sa => `<li>${sa.name || 'Unnamed'} (${sa.ghlLocationId || 'No Location ID'})</li>`).join('');
+      subAccountsHtml = `
+        <div style="background-color: #eff6ff; border: 1px solid #3b82f6; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0 0 10px 0;"><strong>Active Sub-Accounts (${subAccounts.length}):</strong></p>
+          <ul style="margin: 0; padding-left: 20px;">
+            ${subAccountsList}
+          </ul>
+        </div>
+      `;
+    }
+
     const html = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
         <h2 style="color: #22c55e;">Subscription Activated!</h2>
@@ -271,6 +286,7 @@ class EmailService {
           <p style="margin: 0;"><strong>Plan:</strong> ${planName || 'Standard'}</p>
           <p style="margin: 10px 0 0 0;"><strong>Status:</strong> Active</p>
         </div>
+        ${subAccountsHtml}
         <p>You now have full access to all features. Connect your WhatsApp and start sending messages!</p>
         <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
       </div>

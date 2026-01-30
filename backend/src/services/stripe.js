@@ -260,9 +260,13 @@ class StripeService {
             }
           }
 
-          // Send subscription activated email
+          // Send subscription activated email with sub-account info
           if (customer) {
-            emailService.sendSubscriptionActivated(customer.email, customer.name, customer.planType || 'Standard')
+            const subAccounts = await SubAccount.findAll({
+              where: { customerId: customer.id, isPaid: true },
+              attributes: ['name', 'ghlLocationId']
+            });
+            emailService.sendSubscriptionActivated(customer.email, customer.name, customer.planType || 'Standard', subAccounts)
               .catch(err => logger.error('Failed to send subscription activated email:', err));
           }
 
@@ -311,8 +315,12 @@ class StripeService {
                 { isPaid: true },
                 { where: { customerId: customer.id } }
               );
-              // Send email notification
-              emailService.sendSubscriptionActivated(customer.email, customer.name, 'Resumed')
+              // Send email notification with sub-account info
+              const subAccounts = await SubAccount.findAll({
+                where: { customerId: customer.id, isPaid: true },
+                attributes: ['name', 'ghlLocationId']
+              });
+              emailService.sendSubscriptionActivated(customer.email, customer.name, 'Resumed', subAccounts)
                 .catch(err => logger.error('Failed to send subscription resumed email:', err));
             }
 
