@@ -245,7 +245,7 @@ class WhatsAppService {
             }
           }
 
-          // Method 2: Try Baileys' built-in LID mapping (v6.7.19+)
+          // Method 2: Try Baileys' built-in LID mapping (v6.6.0+)
           if (fromNumber.includes('lid') || !/^[1-9]\d{9,14}$/.test(fromNumber)) {
             const socket = connections.get(subAccountId);
             if (socket && socket.signalRepository && socket.signalRepository.lidMapping) {
