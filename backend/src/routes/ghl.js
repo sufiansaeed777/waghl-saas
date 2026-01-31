@@ -11,6 +11,18 @@ const logger = require('../utils/logger');
 const DRIP_MODE_ENABLED = process.env.DRIP_MODE_ENABLED !== 'false'; // Default: true
 const DRIP_DELAY_MS = parseInt(process.env.DRIP_DELAY_MS) || 1000; // Default: 1 second between messages
 
+// Helper to guess media type from URL
+function guessMediaType(url) {
+  if (!url) return 'document';
+  const lowerUrl = url.toLowerCase();
+  if (lowerUrl.match(/\.(jpg|jpeg|png|gif|webp)(\?|$)/)) return 'image';
+  if (lowerUrl.match(/\.(mp4|mov|avi|webm|mkv)(\?|$)/)) return 'video';
+  if (lowerUrl.match(/\.(mp3|ogg|wav|aac|m4a)(\?|$)/)) return 'audio';
+  if (lowerUrl.match(/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|csv)(\?|$)/)) return 'document';
+  // Default to document for unknown types
+  return 'document';
+}
+
 // Simple auth initiation for testing (redirects to GHL OAuth)
 router.get('/auth', async (req, res) => {
   try {
@@ -522,14 +534,37 @@ router.post('/webhook', async (req, res) => {
       const phoneNumber = phone || to;
       const messageContent = message || body || messageBody;
 
+      // Parse attachments - GHL sends as JSON string, e.g. '["https://..."]'
+      let parsedAttachments = [];
+      if (attachments) {
+        if (typeof attachments === 'string') {
+          try {
+            parsedAttachments = JSON.parse(attachments);
+            // If it parsed to an array of strings (URLs), convert to objects
+            if (Array.isArray(parsedAttachments) && parsedAttachments.length > 0 && typeof parsedAttachments[0] === 'string') {
+              parsedAttachments = parsedAttachments.map(url => ({
+                url: url,
+                type: guessMediaType(url)
+              }));
+            }
+          } catch (e) {
+            logger.warn('Failed to parse attachments JSON:', attachments, e.message);
+            parsedAttachments = [];
+          }
+        } else if (Array.isArray(attachments)) {
+          parsedAttachments = attachments;
+        }
+      }
+
       // Log full payload for debugging media issues
       logger.info('GHL webhook payload details:', {
         eventType,
         hasMessage: !!messageContent,
         messageLength: messageContent?.length,
         hasAttachments: !!attachments,
-        attachmentsCount: attachments?.length || 0,
-        attachments: attachments ? JSON.stringify(attachments).substring(0, 500) : null,
+        attachmentsType: typeof attachments,
+        parsedAttachmentsCount: parsedAttachments.length,
+        parsedAttachments: parsedAttachments.length > 0 ? JSON.stringify(parsedAttachments).substring(0, 500) : null,
         phone: phoneNumber
       });
 
@@ -585,8 +620,8 @@ router.post('/webhook', async (req, res) => {
           messageQueue.setRateLimit(subAccount.id, { delayBetweenMessages: DRIP_DELAY_MS });
 
           // Handle media attachments
-          if (attachments && attachments.length > 0) {
-            for (const attachment of attachments) {
+          if (parsedAttachments && parsedAttachments.length > 0) {
+            for (const attachment of parsedAttachments) {
               await messageQueue.queueMessage(
                 subAccount.id,
                 phoneNumber,
@@ -611,8 +646,8 @@ router.post('/webhook', async (req, res) => {
           logger.info(`Queued WhatsApp message to ${phoneNumber} via GHL webhook (drip mode)`);
         } else {
           // Direct sending (no queue)
-          if (attachments && attachments.length > 0) {
-            for (const attachment of attachments) {
+          if (parsedAttachments && parsedAttachments.length > 0) {
+            for (const attachment of parsedAttachments) {
               await whatsappService.sendMessage(
                 subAccount.id,
                 phoneNumber,
