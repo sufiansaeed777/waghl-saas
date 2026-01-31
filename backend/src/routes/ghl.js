@@ -522,6 +522,17 @@ router.post('/webhook', async (req, res) => {
       const phoneNumber = phone || to;
       const messageContent = message || body || messageBody;
 
+      // Log full payload for debugging media issues
+      logger.info('GHL webhook payload details:', {
+        eventType,
+        hasMessage: !!messageContent,
+        messageLength: messageContent?.length,
+        hasAttachments: !!attachments,
+        attachmentsCount: attachments?.length || 0,
+        attachments: attachments ? JSON.stringify(attachments).substring(0, 500) : null,
+        phone: phoneNumber
+      });
+
       if (!locationId || !phoneNumber) {
         logger.warn('GHL webhook missing locationId or phone');
         return res.status(200).json({ success: true }); // Always return 200 to GHL

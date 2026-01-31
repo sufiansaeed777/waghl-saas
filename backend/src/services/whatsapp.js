@@ -449,35 +449,54 @@ class WhatsAppService {
       let sentMessage;
 
       if (messageType === 'text') {
+        if (!content) {
+          throw new Error('Text message content is required');
+        }
         sentMessage = await socket.sendMessage(jid, { text: content });
       } else if (messageType === 'image') {
-        // Send image - content can be URL or base64
+        // Send image - prefer URL, fallback to base64
+        if (!mediaUrl && !content) {
+          throw new Error('Image URL or content is required');
+        }
         const imageMessage = {
           image: mediaUrl ? { url: mediaUrl } : Buffer.from(content, 'base64'),
           caption: fileName || ''
         };
+        logger.info('Sending image message:', { hasUrl: !!mediaUrl, hasContent: !!content, caption: fileName });
         sentMessage = await socket.sendMessage(jid, imageMessage);
       } else if (messageType === 'document') {
-        // Send document (PDF, etc)
+        // Send document (PDF, etc) - prefer URL
+        if (!mediaUrl && !content) {
+          throw new Error('Document URL or content is required');
+        }
         const documentMessage = {
           document: mediaUrl ? { url: mediaUrl } : Buffer.from(content, 'base64'),
           mimetype: this.getMimeType(fileName || 'document.pdf'),
           fileName: fileName || 'document.pdf'
         };
+        logger.info('Sending document message:', { hasUrl: !!mediaUrl, hasContent: !!content, fileName });
         sentMessage = await socket.sendMessage(jid, documentMessage);
       } else if (messageType === 'audio') {
-        // Send audio
+        // Send audio - prefer URL
+        if (!mediaUrl && !content) {
+          throw new Error('Audio URL or content is required');
+        }
         const audioMessage = {
           audio: mediaUrl ? { url: mediaUrl } : Buffer.from(content, 'base64'),
           mimetype: 'audio/mpeg'
         };
+        logger.info('Sending audio message:', { hasUrl: !!mediaUrl, hasContent: !!content });
         sentMessage = await socket.sendMessage(jid, audioMessage);
       } else if (messageType === 'video') {
-        // Send video
+        // Send video - prefer URL
+        if (!mediaUrl && !content) {
+          throw new Error('Video URL or content is required');
+        }
         const videoMessage = {
           video: mediaUrl ? { url: mediaUrl } : Buffer.from(content, 'base64'),
           caption: fileName || ''
         };
+        logger.info('Sending video message:', { hasUrl: !!mediaUrl, hasContent: !!content, caption: fileName });
         sentMessage = await socket.sendMessage(jid, videoMessage);
       } else {
         throw new Error(`Unsupported message type: ${messageType}`);
