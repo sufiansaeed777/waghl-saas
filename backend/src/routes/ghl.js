@@ -552,7 +552,13 @@ router.post('/webhook', async (req, res) => {
             parsedAttachments = [];
           }
         } else if (Array.isArray(attachments)) {
-          parsedAttachments = attachments;
+          // Already an array - but may be array of URL strings, convert to objects
+          parsedAttachments = attachments.map(item => {
+            if (typeof item === 'string') {
+              return { url: item, type: guessMediaType(item) };
+            }
+            return item; // Already an object with url/type
+          });
         }
       }
 
