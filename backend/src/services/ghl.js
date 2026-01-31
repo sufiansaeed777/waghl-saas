@@ -271,34 +271,89 @@ class GHLService {
   }
 
   // Get contact by name (for matching when phone number is unavailable)
+  // Handles partial name matching (e.g., "Dan" can match "Danilo Coviello")
   async getContactByName(customer, locationId, name) {
     try {
       if (!name || name.trim().length === 0) {
         return null;
       }
 
+      const searchName = name.trim();
+      const normalizedName = searchName.toLowerCase();
+
+      logger.info('GHL searching contact by name:', { searchName, locationId });
+
+      // Search using the name
       const params = new URLSearchParams({
         locationId,
-        query: name.trim()
+        query: searchName
       });
 
       const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
       const contacts = response.contacts || [];
 
-      // Find exact or close name match (case-insensitive)
-      const normalizedName = name.trim().toLowerCase();
-      return contacts.find(c => {
-        const contactName = (c.name || c.firstName || '').toLowerCase();
+      logger.info('GHL name search results:', {
+        searchName,
+        resultsCount: contacts.length,
+        contactNames: contacts.slice(0, 5).map(c => c.name || c.firstName)
+      });
+
+      if (contacts.length === 0) {
+        return null;
+      }
+
+      // Score each contact for name matching
+      // Higher score = better match
+      let bestMatch = null;
+      let bestScore = 0;
+
+      for (const c of contacts) {
+        const contactName = (c.name || '').toLowerCase();
         const contactFirstName = (c.firstName || '').toLowerCase();
         const contactLastName = (c.lastName || '').toLowerCase();
         const fullName = `${contactFirstName} ${contactLastName}`.trim().toLowerCase();
 
-        return contactName === normalizedName ||
-               contactFirstName === normalizedName ||
-               fullName === normalizedName ||
-               contactName.includes(normalizedName) ||
-               normalizedName.includes(contactName);
-      }) || null;
+        let score = 0;
+
+        // Exact matches (highest priority)
+        if (contactName === normalizedName || fullName === normalizedName) {
+          score = 100;
+        } else if (contactFirstName === normalizedName) {
+          score = 90;
+        }
+        // Contact's first name starts with the search name (e.g., "Dan" matches "Danilo")
+        else if (contactFirstName.startsWith(normalizedName)) {
+          score = 80;
+        }
+        // Contact name starts with search name
+        else if (contactName.startsWith(normalizedName)) {
+          score = 70;
+        }
+        // Search name is contained in contact name
+        else if (contactName.includes(normalizedName) || fullName.includes(normalizedName)) {
+          score = 60;
+        }
+        // Contact name is contained in search name
+        else if (normalizedName.includes(contactFirstName) && contactFirstName.length >= 3) {
+          score = 50;
+        }
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestMatch = c;
+        }
+      }
+
+      if (bestMatch) {
+        logger.info('GHL found contact by name:', {
+          searchName,
+          matchedName: bestMatch.name || bestMatch.firstName,
+          matchScore: bestScore,
+          contactId: bestMatch.id
+        });
+      }
+
+      return bestMatch;
     } catch (error) {
       logger.error('GHL get contact by name error:', error);
       return null;
@@ -475,26 +530,18 @@ class GHLService {
         }
 
         if (!contact) {
-          // No name match found - create a contact with the name (or a placeholder)
-          // Don't use the WhatsApp internal ID as phone since it would create wrong contacts
-          const displayName = contactName || `WhatsApp Contact`;
-          logger.info('Creating GHL contact by name (no phone):', { displayName });
-          try {
-            contact = await this.createContact(subAccount, subAccount.ghlLocationId, {
-              name: displayName,
-              source: 'GHLWA Connector (WhatsApp)'
-            });
-            logger.info('Created GHL contact by name:', { contactId: contact.id, contactName: contact.name });
-          } catch (createError) {
-            logger.error('Failed to create contact by name:', createError.message);
-            // As last resort, create with placeholder phone (better than nothing)
-            contact = await this.getOrCreateContact(
-              subAccount,
-              subAccount.ghlLocationId,
-              externalPhone,
-              displayName
-            );
-          }
+          // No name match found
+          // IMPORTANT: Do NOT create contacts with WhatsApp internal IDs as phone numbers
+          // This would create duplicate contacts with wrong phone numbers
+          // Instead, log a warning and skip syncing this message
+          const displayName = contactName || 'Unknown';
+          logger.warn('Cannot sync message: WhatsApp contact not found in GHL', {
+            externalPhone,
+            contactName: displayName,
+            locationId: subAccount.ghlLocationId,
+            suggestion: 'Create the contact in GHL first with their real phone number'
+          });
+          return null;  // Skip syncing - better than creating wrong contacts
         }
       }
 
