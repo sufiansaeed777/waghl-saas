@@ -411,14 +411,15 @@ class WhatsAppService {
         });
 
         // Sync to GHL using resolved phone number (async, don't wait)
-        // Pass pushName for name-based matching when phone number can't be resolved
+        // Pass pushName and isLID flag for name-based matching when phone number can't be resolved
         ghlService.syncMessageToGHL(
           subAccount,
           phoneForSync,  // Use resolved phone number for correct contact matching
           subAccount.phoneNumber || '',
           content,
           'inbound',
-          pushName  // Pass contact name for name-based matching fallback
+          pushName,  // Pass contact name for name-based matching fallback
+          isLID      // Flag indicating this is a WhatsApp LID (not a real phone number)
         ).catch(err => logger.error('GHL sync error:', err));
 
       } catch (error) {

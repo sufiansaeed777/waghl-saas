@@ -468,7 +468,8 @@ class GHLService {
 
   // Sync WhatsApp message to GHL
   // contactName is optional - used for name-based matching when phone is unavailable (WhatsApp LID)
-  async syncMessageToGHL(subAccount, fromNumber, toNumber, content, direction = 'inbound', contactName = null) {
+  // isLID is optional - flag from WhatsApp service indicating this is a LID (not a real phone number)
+  async syncMessageToGHL(subAccount, fromNumber, toNumber, content, direction = 'inbound', contactName = null, isLID = false) {
     try {
       logger.info('syncMessageToGHL called', {
         subAccountId: subAccount.id,
@@ -476,6 +477,7 @@ class GHLService {
         toNumber,
         direction,
         contactName,
+        isLID,
         contentLength: content?.length,
         ghlConnected: subAccount.ghlConnected,
         hasAccessToken: !!subAccount.ghlAccessToken,
@@ -496,13 +498,16 @@ class GHLService {
 
       // Determine the external phone number (not our WhatsApp number)
       const externalPhone = direction === 'inbound' ? fromNumber : toNumber;
-      logger.info('External phone for GHL sync:', { externalPhone, direction, contactName });
+      logger.info('External phone for GHL sync:', { externalPhone, direction, contactName, isLID });
 
-      // Check if externalPhone is a valid phone number or a WhatsApp internal ID
-      const isValidPhoneNumber = /^[1-9]\d{9,14}$/.test(externalPhone) && externalPhone.length <= 15;
+      // Use isLID flag to determine if this is a real phone number
+      // LIDs can look like valid phone numbers (15 digits starting with a country code)
+      // but they're WhatsApp internal IDs that shouldn't be used as phone numbers
+      const hasValidPhoneFormat = /^[1-9]\d{9,14}$/.test(externalPhone) && externalPhone.length <= 15;
+      const isRealPhoneNumber = hasValidPhoneFormat && !isLID;
       let contact = null;
 
-      if (isValidPhoneNumber) {
+      if (isRealPhoneNumber) {
         // Standard flow: get or create contact by phone number
         contact = await this.getOrCreateContact(
           subAccount,
@@ -510,10 +515,11 @@ class GHLService {
           externalPhone
         );
       } else {
-        // WhatsApp internal ID - try name-based matching first
-        logger.info('External phone appears to be WhatsApp ID, trying name-based matching', {
+        // WhatsApp LID - use name-based matching to find existing contact
+        logger.info('Phone is WhatsApp LID, using name-based matching', {
           externalPhone,
-          contactName
+          contactName,
+          isLID
         });
 
         if (contactName) {
