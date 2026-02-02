@@ -366,49 +366,38 @@ router.get('/callback', async (req, res) => {
     if (isFromGHL) {
       // Send success message to opener window and close popup
       logger.info('GHL OAuth successful, notifying opener window');
-      res.set('Content-Type', 'text/html');
-      res.send(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta charset="UTF-8">
-          <title>Connection Successful</title>
-          <style>
-            body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%); }
-            .box { background: white; padding: 40px; border-radius: 16px; text-align: center; }
-            .spinner { width: 40px; height: 40px; border: 4px solid #e5e7eb; border-top-color: #0f766e; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
-            @keyframes spin { to { transform: rotate(360deg); } }
-            p { color: #666; }
-          </style>
-        </head>
-        <body>
-          <div class="box">
-            <div class="spinner"></div>
-            <p>Connection successful! Closing window...</p>
-          </div>
-          <script>
-            // Send success to opener window
-            const result = {
-              type: 'GHL_OAUTH_RESULT',
-              success: true,
-              token: '${embedToken}',
-              locationId: '${finalLocationId}',
-              subAccountId: '${subAccount.id}',
-              message: 'GHL location connected successfully!'
-            };
-
-            if (window.opener) {
-              window.opener.postMessage(result, '*');
-              try { window.close(); } catch(e) {}
-            }
-            // Always redirect after short delay (whether popup closes or not)
-            setTimeout(() => {
-              window.location.href = "${whatsappPageUrl}";
-            }, 1000);
-          </script>
-        </body>
-        </html>
-      `);
+      return res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Connection Successful</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f766e,#134e4a)}
+.card{background:#fff;padding:48px;border-radius:16px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.3);max-width:400px;margin:20px}
+.icon{width:64px;height:64px;background:#10b981;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+.icon svg{width:32px;height:32px;color:#fff}
+h1{color:#1f2937;font-size:24px;margin-bottom:12px}
+p{color:#6b7280;font-size:16px;line-height:1.5}
+.loader{width:24px;height:24px;border:3px solid #e5e7eb;border-top-color:#10b981;border-radius:50%;animation:spin 1s linear infinite;margin:20px auto 0}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="card">
+<div class="icon"><svg fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg></div>
+<h1>Connection Successful!</h1>
+<p>GHL location connected successfully. This window will close automatically.</p>
+<div class="loader"></div>
+</div>
+<script>
+var result={type:'GHL_OAUTH_RESULT',success:true,token:'${embedToken}',locationId:'${finalLocationId}',subAccountId:'${subAccount.id}',message:'GHL location connected successfully!'};
+if(window.opener){window.opener.postMessage(result,'*');try{window.close()}catch(e){}}
+setTimeout(function(){window.location.href="${whatsappPageUrl}"},1500);
+</script>
+</body>
+</html>`);
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
       res.redirect(`${frontendUrl}/sub-accounts/${subAccount.id}?ghl_connected=true`);
