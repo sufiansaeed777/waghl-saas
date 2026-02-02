@@ -171,6 +171,35 @@ class WhatsAppService {
       } else if (connection === 'open') {
         const phoneNumber = socket.user?.id?.split(':')[0] || null;
 
+        // Check if this phone number is already connected to another sub-account
+        if (phoneNumber) {
+          const existingConnection = await SubAccount.findOne({
+            where: {
+              phoneNumber,
+              id: { [require('sequelize').Op.ne]: subAccountId },
+              status: 'connected'
+            }
+          });
+
+          if (existingConnection) {
+            logger.warn(`Phone ${phoneNumber} already connected to sub-account ${existingConnection.id}, rejecting connection for ${subAccountId}`);
+
+            // Disconnect this session
+            await this.clearSession(subAccountId);
+            await subAccount.update({ status: 'disconnected' });
+            connections.delete(subAccountId);
+            qrCodes.delete(subAccountId);
+
+            // Trigger webhook with error
+            await webhookService.trigger(subAccountId, 'connection.status', {
+              status: 'error',
+              error: 'phone_already_connected',
+              message: `This WhatsApp number (${phoneNumber}) is already connected to another sub-account`
+            });
+            return;
+          }
+        }
+
         await subAccount.update({
           status: 'connected',
           phoneNumber,
