@@ -366,34 +366,9 @@ router.get('/callback', async (req, res) => {
     if (isFromGHL) {
       // Show simple success page directly - no redirect
       logger.info('GHL OAuth successful');
-      return res.type('html').send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Connection Successful</title>
-<style>
-*{margin:0;padding:0;box-sizing:border-box}
-body{min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#10b981 0%,#059669 100%)}
-.card{background:#fff;padding:60px 50px;border-radius:20px;text-align:center;box-shadow:0 25px 80px rgba(0,0,0,0.25);max-width:420px;margin:20px}
-.icon{width:100px;height:100px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);border-radius:50%;margin:0 auto 30px;display:flex;align-items:center;justify-content:center;box-shadow:0 10px 40px rgba(16,185,129,0.4)}
-.icon svg{width:50px;height:50px}
-h1{color:#1f2937;font-size:32px;font-weight:700;margin-bottom:15px}
-p{color:#6b7280;font-size:18px;line-height:1.6}
-.divider{width:60px;height:4px;background:linear-gradient(135deg,#10b981 0%,#059669 100%);border-radius:2px;margin:25px auto}
-.sub{color:#9ca3af;font-size:14px;margin-top:20px}
-</style>
-</head>
-<body>
-<div class="card">
-<div class="icon"><svg fill="none" stroke="#fff" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
-<h1>Connection Successful!</h1>
-<div class="divider"></div>
-<p>Your GoHighLevel account has been connected successfully.</p>
-<p class="sub">You can close this window now.</p>
-</div>
-</body>
-</html>`);
+      const html = '<!DOCTYPE html><html><head><title>Success</title></head><body style="display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#10b981;font-family:sans-serif"><div style="background:white;padding:50px;border-radius:20px;text-align:center"><h1 style="color:#1f2937;margin:0 0 15px">Connection Successful!</h1><p style="color:#666;margin:0">You can close this window now.</p></div></body></html>';
+      res.writeHead(200, {'Content-Type': 'text/html'});
+      return res.end(html);
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
       res.redirect(`${frontendUrl}/sub-accounts/${subAccount.id}?ghl_connected=true`);
