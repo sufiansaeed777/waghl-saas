@@ -786,6 +786,8 @@ router.post('/queue/resume/:subAccountId', authenticateJWT, async (req, res) => 
 
 // OAuth success page - serves HTML directly
 router.get('/success', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
