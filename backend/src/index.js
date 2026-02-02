@@ -117,6 +117,12 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 // Serve static HTML files from backend root (oauth-success.html, etc)
 app.use(express.static(path.join(__dirname, '..')));
 
+// OAuth success page (outside /api/ to avoid nginx content-type override)
+app.get('/oauth-success', (req, res) => {
+  res.setHeader('Content-Type', 'text/html');
+  res.send(`<!DOCTYPE html><html><head><title>Success</title></head><body style="display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#10b981;font-family:sans-serif"><div style="background:white;padding:50px;border-radius:20px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2)"><div style="width:80px;height:80px;background:#10b981;border-radius:50%;margin:0 auto 20px;display:flex;align-items:center;justify-content:center"><svg fill="none" stroke="white" stroke-width="3" viewBox="0 0 24 24" style="width:40px;height:40px"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div><h1 style="color:#1f2937;margin:0 0 15px;font-size:28px">Connection Successful!</h1><p style="color:#666;margin:0">You can close this window now.</p></div></body></html>`);
+});
+
 // Health check with database connection status
 app.get('/health', async (req, res) => {
   try {
