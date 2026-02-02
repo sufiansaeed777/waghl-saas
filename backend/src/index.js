@@ -114,6 +114,9 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+// Serve static HTML files from backend root (oauth-success.html, etc)
+app.use(express.static(path.join(__dirname, '..')));
+
 // Health check with database connection status
 app.get('/health', async (req, res) => {
   try {
