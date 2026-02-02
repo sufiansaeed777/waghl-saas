@@ -366,8 +366,8 @@ router.get('/callback', async (req, res) => {
     if (isFromGHL) {
       // Show simple success page directly - no redirect
       logger.info('GHL OAuth successful');
-      // Redirect to success page outside /api/ to avoid nginx content-type override
-      return res.redirect('/oauth-success');
+      // Redirect to success page
+      return res.redirect('/ghl-connected');
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
       res.redirect(`${frontendUrl}/sub-accounts/${subAccount.id}?ghl_connected=true`);
