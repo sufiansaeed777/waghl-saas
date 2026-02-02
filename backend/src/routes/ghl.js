@@ -366,7 +366,8 @@ router.get('/callback', async (req, res) => {
     if (isFromGHL) {
       // Show simple success page directly - no redirect
       logger.info('GHL OAuth successful');
-      return res.send(`<!DOCTYPE html>
+      res.setHeader('Content-Type', 'text/html');
+      return res.end(`<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
