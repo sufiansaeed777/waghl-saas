@@ -367,7 +367,12 @@ router.get('/callback', async (req, res) => {
       // Show simple success page directly - no redirect
       logger.info('GHL OAuth successful');
       const html = '<!DOCTYPE html><html><head><title>Success</title></head><body style="display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#10b981;font-family:sans-serif"><div style="background:white;padding:50px;border-radius:20px;text-align:center"><h1 style="color:#1f2937;margin:0 0 15px">Connection Successful!</h1><p style="color:#666;margin:0">You can close this window now.</p></div></body></html>';
-      res.writeHead(200, {'Content-Type': 'text/html'});
+      res.writeHead(200, {
+        'Content-Type': 'text/html',
+        'Cache-Control': 'no-store, no-cache, must-revalidate',
+        'Pragma': 'no-cache',
+        'Expires': '0'
+      });
       return res.end(html);
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
