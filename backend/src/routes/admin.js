@@ -51,12 +51,22 @@ router.get('/customers', async (req, res) => {
 // Get all sub-accounts
 router.get('/sub-accounts', async (req, res) => {
   try {
-    const { page = 1, limit = 20, customerId, status } = req.query;
+    const { page = 1, limit = 20, customerId, status, search } = req.query;
     const offset = (page - 1) * limit;
+    const { Op } = require('sequelize');
 
     const where = {};
     if (customerId) where.customerId = customerId;
     if (status) where.status = status;
+
+    // Search by phone, name, or locationId
+    if (search) {
+      where[Op.or] = [
+        { name: { [Op.iLike]: `%${search}%` } },
+        { phoneNumber: { [Op.iLike]: `%${search}%` } },
+        { ghlLocationId: { [Op.iLike]: `%${search}%` } }
+      ];
+    }
 
     const { count, rows: subAccounts } = await SubAccount.findAndCountAll({
       where,
