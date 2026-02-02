@@ -48,14 +48,16 @@ export default function SubAccountDetail() {
   // Check for GHL callback results
   useEffect(() => {
     if (searchParams.get('ghl_connected') === 'true') {
+      // Clear the query param first, then reload to show fresh data
+      window.history.replaceState({}, '', `/sub-accounts/${id}`)
       toast.success('GoHighLevel connected successfully!')
-      // Full page reload to refresh all data
-      window.location.href = `/sub-accounts/${id}`
+      // Force reload to get fresh data from server
+      setTimeout(() => window.location.reload(), 100)
     } else if (searchParams.get('ghl_error')) {
       toast.error(`GHL connection failed: ${searchParams.get('ghl_error')}`)
-      window.location.href = `/sub-accounts/${id}`
+      navigate(`/sub-accounts/${id}`, { replace: true })
     }
-  }, [searchParams, id])
+  }, [searchParams, id, navigate])
 
   useEffect(() => {
     fetchSubAccount()

@@ -364,10 +364,30 @@ router.get('/callback', async (req, res) => {
     logger.info('Set ghl_auth cookie for location:', finalLocationId);
 
     if (isFromGHL) {
-      // Send minimal HTML that immediately redirects to success page
-      logger.info('GHL OAuth successful, redirecting to success page');
-      const successUrl = `${apiUrl}/oauth-success.html?token=${embedToken}&locationId=${finalLocationId}&subAccountId=${subAccount.id}&redirect=${encodeURIComponent(whatsappPageUrl)}`;
-      return res.send(`<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=${successUrl}"><script>window.location.href="${successUrl}";</script></head><body></body></html>`);
+      // Show simple success page - no redirect
+      logger.info('GHL OAuth successful');
+      return res.send(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Connection Successful</title>
+<style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:-apple-system,sans-serif;background:linear-gradient(135deg,#10b981,#059669)}
+.card{background:#fff;padding:50px;border-radius:16px;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+.check{width:80px;height:80px;background:#10b981;border-radius:50%;margin:0 auto 20px;display:flex;align-items:center;justify-content:center}
+.check svg{width:40px;height:40px}
+h1{color:#1f2937;margin:0 0 10px;font-size:28px}
+p{color:#6b7280;margin:0;font-size:16px}
+</style>
+</head>
+<body>
+<div class="card">
+<div class="check"><svg fill="none" stroke="#fff" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+<h1>Connection Successful!</h1>
+<p>You can close this window now.</p>
+</div>
+</body>
+</html>`);
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
       res.redirect(`${frontendUrl}/sub-accounts/${subAccount.id}?ghl_connected=true`);
