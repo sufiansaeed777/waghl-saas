@@ -366,7 +366,6 @@ router.get('/callback', async (req, res) => {
     if (isFromGHL) {
       // Send success message to opener window and close popup
       logger.info('GHL OAuth successful, notifying opener window');
-      res.set('Content-Type', 'text/html');
       return res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
