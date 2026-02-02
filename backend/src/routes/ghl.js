@@ -364,10 +364,10 @@ router.get('/callback', async (req, res) => {
     logger.info('Set ghl_auth cookie for location:', finalLocationId);
 
     if (isFromGHL) {
-      // Show simple success page - no redirect
+      // Show simple success page
       logger.info('GHL OAuth successful');
-      // Redirect to static success page to ensure proper HTML rendering
-      return res.redirect('/connection-success.html');
+      // Redirect to static success page with absolute URL
+      return res.redirect(`${apiUrl}/connection-success.html`);
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
       res.redirect(`${frontendUrl}/sub-accounts/${subAccount.id}?ghl_connected=true`);
