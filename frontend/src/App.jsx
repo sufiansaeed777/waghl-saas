@@ -9,6 +9,7 @@ import SubAccounts from './pages/SubAccounts'
 import SubAccountDetail from './pages/SubAccountDetail'
 import Settings from './pages/Settings'
 import AdminDashboard from './pages/AdminDashboard'
+import GhlSuccess from './pages/GhlSuccess'
 
 function PrivateRoute({ children }) {
   const { user, loading } = useAuth()
@@ -58,6 +59,9 @@ function PublicRoute({ children }) {
 export default function App() {
   return (
     <Routes>
+      {/* GHL OAuth success page - no auth required */}
+      <Route path="/ghl-success" element={<GhlSuccess />} />
+
       {/* Public routes */}
       <Route path="/" element={<PublicRoute><Landing /></PublicRoute>} />
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />

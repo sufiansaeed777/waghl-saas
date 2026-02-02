@@ -366,8 +366,9 @@ router.get('/callback', async (req, res) => {
     if (isFromGHL) {
       // Show simple success page directly - no redirect
       logger.info('GHL OAuth successful');
-      // Redirect to success page
-      return res.redirect('/ghl-connected');
+      // Redirect to frontend success page
+      const frontendUrl = process.env.FRONTEND_URL || 'https://whatsapp.bibotcrm.it';
+      return res.redirect(`${frontendUrl}/ghl-success`);
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
       res.redirect(`${frontendUrl}/sub-accounts/${subAccount.id}?ghl_connected=true`);
