@@ -378,15 +378,17 @@ class GHLService {
       // GHL returns various duplicate error messages:
       // - "This location does not allow duplicated contacts"
       // - "Contact with this phone/email already exists"
-      // - errorData may contain: { contactId: 'xxx' } or { contact: {...} } or { id: 'xxx' }
+      // - errorData may contain: { meta: { contactId: 'xxx' } } or { contactId: 'xxx' } or { contact: {...} }
       if (isDuplicateError && (
         errorMessage.toLowerCase().includes('duplicate') ||
         errorMessage.toLowerCase().includes('already exists') ||
+        errorData?.meta?.contactId ||
         errorData?.contactId ||
         errorData?.contact?.id ||
         errorData?.id
       )) {
-        const existingContactId = errorData?.contactId || errorData?.contact?.id || errorData?.id;
+        // GHL puts contactId in meta.contactId for duplicate errors
+        const existingContactId = errorData?.meta?.contactId || errorData?.contactId || errorData?.contact?.id || errorData?.id;
         logger.info('GHL duplicate contact detected:', {
           locationId,
           phone: contactData.phone,
