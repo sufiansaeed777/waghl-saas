@@ -361,15 +361,71 @@ class GHLService {
   }
 
   // Create contact in GHL
+  // Returns { contact, isDuplicate } - isDuplicate is true if contact already existed
   async createContact(customer, locationId, contactData) {
     try {
       const response = await this.apiRequest(customer, 'POST', '/contacts/', {
         locationId,
         ...contactData
       });
-      return response.contact;
+      return { contact: response.contact, isDuplicate: false };
     } catch (error) {
-      logger.error('GHL create contact error:', error);
+      // Check if this is a duplicate contact error (GHL returns 400/422 with existing contact info)
+      const errorData = error.response?.data;
+      const errorMessage = errorData?.message || errorData?.msg || '';
+      const isDuplicateError = error.response?.status === 400 || error.response?.status === 422;
+
+      // GHL returns various duplicate error messages:
+      // - "This location does not allow duplicated contacts"
+      // - "Contact with this phone/email already exists"
+      // - errorData may contain: { contactId: 'xxx' } or { contact: {...} } or { id: 'xxx' }
+      if (isDuplicateError && (
+        errorMessage.toLowerCase().includes('duplicate') ||
+        errorMessage.toLowerCase().includes('already exists') ||
+        errorData?.contactId ||
+        errorData?.contact?.id ||
+        errorData?.id
+      )) {
+        const existingContactId = errorData?.contactId || errorData?.contact?.id || errorData?.id;
+        logger.info('GHL duplicate contact detected:', {
+          locationId,
+          phone: contactData.phone,
+          existingContactId,
+          errorMessage
+        });
+
+        if (existingContactId) {
+          // Fetch the existing contact
+          try {
+            const existingContact = await this.apiRequest(customer, 'GET', `/contacts/${existingContactId}`);
+            if (existingContact?.contact) {
+              logger.info('Retrieved existing GHL contact:', { contactId: existingContact.contact.id });
+              return { contact: existingContact.contact, isDuplicate: true };
+            }
+          } catch (fetchError) {
+            logger.warn('Failed to fetch existing contact by ID:', { existingContactId, error: fetchError.message });
+          }
+        }
+
+        // If no contactId in error, search for the contact by phone
+        if (contactData.phone) {
+          const existingByPhone = await this.getContactByPhone(customer, locationId, contactData.phone);
+          if (existingByPhone) {
+            logger.info('Found existing contact by phone search:', { contactId: existingByPhone.id });
+            return { contact: existingByPhone, isDuplicate: true };
+          }
+        }
+
+        // Last resort: return null but don't throw (duplicate exists but couldn't retrieve it)
+        logger.warn('Duplicate contact exists but could not retrieve it');
+        return { contact: null, isDuplicate: true };
+      }
+
+      logger.error('GHL create contact error:', {
+        status: error.response?.status,
+        errorData,
+        message: error.message
+      });
       throw new Error('Failed to create GHL contact');
     }
   }
@@ -388,22 +444,42 @@ class GHLService {
   // Get or create contact by phone
   async getOrCreateContact(customer, locationId, phoneNumber, name = null) {
     try {
-      // Try to find existing contact
+      // Try to find existing contact first
       let contact = await this.getContactByPhone(customer, locationId, phoneNumber);
 
-      if (!contact) {
-        // Create new contact
-        contact = await this.createContact(customer, locationId, {
-          phone: phoneNumber,
-          name: name || `WhatsApp ${phoneNumber}`,
-          source: 'GHLWA Connector'
-        });
-        logger.info(`Created new GHL contact for ${phoneNumber}`);
+      if (contact) {
+        logger.info(`Found existing GHL contact for ${phoneNumber}`, { contactId: contact.id });
+        return contact;
       }
 
-      return contact;
+      // Create new contact (handles duplicate errors internally)
+      const result = await this.createContact(customer, locationId, {
+        phone: phoneNumber,
+        name: name || `WhatsApp ${phoneNumber}`,
+        source: 'GHLWA Connector'
+      });
+
+      if (result.contact) {
+        if (result.isDuplicate) {
+          logger.info(`Found duplicate GHL contact for ${phoneNumber}`, { contactId: result.contact.id });
+        } else {
+          logger.info(`Created new GHL contact for ${phoneNumber}`, { contactId: result.contact.id });
+        }
+        return result.contact;
+      }
+
+      // If createContact returned null (duplicate exists but couldn't retrieve)
+      // Try searching by phone one more time
+      contact = await this.getContactByPhone(customer, locationId, phoneNumber);
+      if (contact) {
+        logger.info(`Found contact on retry for ${phoneNumber}`, { contactId: contact.id });
+        return contact;
+      }
+
+      logger.error(`Could not get or create contact for ${phoneNumber}`);
+      return null;
     } catch (error) {
-      logger.error('GHL get or create contact error:', error);
+      logger.error('GHL get or create contact error:', error.message);
       throw error;
     }
   }
