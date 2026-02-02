@@ -364,10 +364,10 @@ router.get('/callback', async (req, res) => {
     logger.info('Set ghl_auth cookie for location:', finalLocationId);
 
     if (isFromGHL) {
-      // Redirect to success page with parameters
+      // Send minimal HTML that immediately redirects to success page
       logger.info('GHL OAuth successful, redirecting to success page');
       const successUrl = `${apiUrl}/oauth-success.html?token=${embedToken}&locationId=${finalLocationId}&subAccountId=${subAccount.id}&redirect=${encodeURIComponent(whatsappPageUrl)}`;
-      return res.redirect(successUrl);
+      return res.send(`<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0;url=${successUrl}"><script>window.location.href="${successUrl}";</script></head><body></body></html>`);
     } else {
       // Redirect back to dashboard for dashboard-initiated connections
       res.redirect(`${frontendUrl}/sub-accounts/${subAccount.id}?ghl_connected=true`);
