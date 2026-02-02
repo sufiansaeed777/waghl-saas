@@ -114,9 +114,15 @@ app.use(express.urlencoded({ extended: true }));
 // Serve uploaded files
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// Health check with database connection status
+app.get('/health', async (req, res) => {
+  try {
+    await sequelize.authenticate();
+    res.type('text/plain').send('PG connection successful');
+  } catch (error) {
+    const reason = error.message || 'Unknown error';
+    res.type('text/plain').status(500).send(`PG connection failed: ${reason}`);
+  }
 });
 
 // API Routes
