@@ -630,8 +630,54 @@ class WhatsAppService {
         throw new Error('Sub-account is not connected');
       }
 
-      // Format number
-      const jid = toNumber.includes('@') ? toNumber : `${toNumber.replace(/\D/g, '')}@s.whatsapp.net`;
+      // Clean the phone number
+      const cleanPhone = toNumber.replace(/\D/g, '');
+
+      // Query WhatsApp to check if number exists and get the correct JID
+      // This is the most reliable way to get the LID mapping before sending
+      let jid = toNumber.includes('@') ? toNumber : `${cleanPhone}@s.whatsapp.net`;
+      let whatsappId = null;
+
+      try {
+        const [result] = await socket.onWhatsApp(cleanPhone);
+        if (result?.exists) {
+          jid = result.jid;
+          // Extract the WhatsApp ID (could be LID or phone)
+          whatsappId = result.jid.split('@')[0];
+          logger.info('onWhatsApp query result:', {
+            phone: cleanPhone,
+            exists: result.exists,
+            jid: result.jid,
+            whatsappId
+          });
+
+          // Store the mapping immediately (phone → whatsappId)
+          // This ensures we have the mapping BEFORE the message is sent
+          if (whatsappId && whatsappId !== cleanPhone) {
+            // WhatsApp returned a different ID (likely a LID)
+            await WhatsAppMapping.upsert({
+              subAccountId,
+              phoneNumber: cleanPhone,
+              whatsappId: whatsappId,
+              lastActivityAt: new Date()
+            }, {
+              conflictFields: ['subAccountId', 'phoneNumber']
+            });
+            logger.info('Stored LID mapping from onWhatsApp:', {
+              phoneNumber: cleanPhone,
+              whatsappId
+            });
+          }
+        } else {
+          logger.warn('Phone number not found on WhatsApp:', { phone: cleanPhone });
+        }
+      } catch (onWhatsAppErr) {
+        // onWhatsApp might fail - continue with default JID
+        logger.warn('onWhatsApp query failed, using default JID:', {
+          phone: cleanPhone,
+          error: onWhatsAppErr.message
+        });
+      }
 
       let sentMessage;
 
@@ -703,30 +749,31 @@ class WhatsAppService {
 
       logger.info(`Sent message from ${subAccountId} to ${toNumber}`);
 
-      // Create WhatsAppMapping entry for this phone number (with whatsappId=null)
-      // This allows auto-matching when a LID response comes back
-      const cleanToNumber = toNumber.replace(/\D/g, '');
-      try {
-        const [mapping, created] = await WhatsAppMapping.findOrCreate({
-          where: { subAccountId, phoneNumber: cleanToNumber },
-          defaults: {
-            subAccountId,
-            phoneNumber: cleanToNumber,
-            whatsappId: null,  // Will be filled when LID is matched
-            lastActivityAt: new Date()
+      // If onWhatsApp didn't create a mapping (failed or returned same number),
+      // create a fallback mapping for auto-matching when LID response comes
+      if (!whatsappId || whatsappId === cleanPhone) {
+        try {
+          const [mapping, created] = await WhatsAppMapping.findOrCreate({
+            where: { subAccountId, phoneNumber: cleanPhone },
+            defaults: {
+              subAccountId,
+              phoneNumber: cleanPhone,
+              whatsappId: null,  // Will be filled when LID is matched
+              lastActivityAt: new Date()
+            }
+          });
+          if (!created && !mapping.whatsappId) {
+            // Update last activity time for existing unmapped entry
+            await mapping.update({ lastActivityAt: new Date() });
           }
-        });
-        if (!created) {
-          // Update last activity time for existing mapping
-          await mapping.update({ lastActivityAt: new Date() });
+          logger.info('Created/updated fallback phone mapping:', {
+            phoneNumber: cleanPhone,
+            hasWhatsAppId: !!mapping.whatsappId,
+            created
+          });
+        } catch (mappingErr) {
+          logger.warn('Failed to create fallback phone mapping:', mappingErr.message);
         }
-        logger.info('Created/updated phone mapping for outbound:', {
-          phoneNumber: cleanToNumber,
-          hasWhatsAppId: !!mapping.whatsappId,
-          created
-        });
-      } catch (mappingErr) {
-        logger.warn('Failed to create phone mapping:', mappingErr.message);
       }
 
       // Trigger webhook
