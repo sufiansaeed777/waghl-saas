@@ -919,6 +919,7 @@
         }
         const data = await res.json();
         renderStatus(data);
+        lastStatus = data; // Set lastStatus to prevent first poll from re-rendering
       } catch (err) {
         document.getElementById('content').innerHTML = `
           <div class="error-box">
