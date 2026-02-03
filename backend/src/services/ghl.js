@@ -251,35 +251,63 @@ class GHLService {
       // Clean phone number
       const cleanPhone = phoneNumber.replace(/\D/g, '');
 
-      // Try multiple search queries since GHL stores phones in various formats
-      // e.g., "+44 7440 112056" won't be found by searching "447440112056"
-      // GHL search does substring matching but spaces in stored phone break contiguity
-      const searchQueries = [
-        cleanPhone,                    // Full number: 447440112056
-        cleanPhone.slice(-10),         // Last 10 digits: 7440112056
-        cleanPhone.slice(-6),          // Last 6 digits: 112056 (most likely to be contiguous)
-        cleanPhone.slice(-9),          // Last 9 digits: 440112056
-        cleanPhone.slice(0, 6),        // First 6 digits: 447440 (country + area code)
-      ].filter((q, i, arr) => q.length >= 6 && arr.indexOf(q) === i); // Unique queries, min 6 digits
-
       let contacts = [];
 
-      // Try each search query until we find contacts
-      logger.info('GHL contact search starting', { searchQueries, locationId });
-      for (const query of searchQueries) {
-        const params = new URLSearchParams({
-          locationId,
-          query: query
-        });
-        const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
-        logger.info('GHL search query result', {
-          query,
-          resultsCount: response.contacts?.length || 0,
-          contactPhones: response.contacts?.slice(0, 3).map(c => c.phone) || []
-        });
-        if (response.contacts && response.contacts.length > 0) {
-          contacts = response.contacts;
-          break;
+      // First try the lookup endpoint with different phone formats
+      const phoneFormats = [
+        '+' + cleanPhone,              // +447440112056
+        cleanPhone,                    // 447440112056
+        '+' + cleanPhone.slice(-10),   // +7440112056 (if local)
+      ];
+
+      logger.info('GHL contact lookup starting', { phoneFormats, locationId });
+
+      for (const phone of phoneFormats) {
+        try {
+          const lookupParams = new URLSearchParams({
+            locationId,
+            phone: phone
+          });
+          const lookupResponse = await this.apiRequest(customer, 'GET', `/contacts/lookup?${lookupParams.toString()}`);
+          logger.info('GHL lookup result', {
+            phone,
+            found: !!lookupResponse.contact,
+            contactPhone: lookupResponse.contact?.phone
+          });
+          if (lookupResponse.contact) {
+            contacts = [lookupResponse.contact];
+            break;
+          }
+        } catch (lookupErr) {
+          // Lookup endpoint may not exist or fail, continue to search
+          logger.debug('GHL lookup failed, trying search', { phone, error: lookupErr.message });
+        }
+      }
+
+      // If lookup didn't find anything, try search endpoint
+      if (contacts.length === 0) {
+        const searchQueries = [
+          cleanPhone,                    // Full number: 447440112056
+          cleanPhone.slice(-10),         // Last 10 digits: 7440112056
+          cleanPhone.slice(-6),          // Last 6 digits: 112056
+        ].filter((q, i, arr) => q.length >= 6 && arr.indexOf(q) === i);
+
+        logger.info('GHL contact search starting', { searchQueries, locationId });
+        for (const query of searchQueries) {
+          const params = new URLSearchParams({
+            locationId,
+            query: query
+          });
+          const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
+          logger.info('GHL search query result', {
+            query,
+            resultsCount: response.contacts?.length || 0,
+            contactPhones: response.contacts?.slice(0, 3).map(c => c.phone) || []
+          });
+          if (response.contacts && response.contacts.length > 0) {
+            contacts = response.contacts;
+            break;
+          }
         }
       }
 
