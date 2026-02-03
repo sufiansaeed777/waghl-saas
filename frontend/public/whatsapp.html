@@ -1089,6 +1089,8 @@
       }
     }
 
+    let lastStatus = null; // Track last status to avoid unnecessary re-renders
+
     async function pollStatus() {
       // Prevent concurrent polling
       if (isPolling) {
@@ -1103,10 +1105,18 @@
         const statusUrl = apiBase + '/api/embed/status/' + token;
         const res = await fetch(statusUrl);
         const data = await res.json();
-        console.log('Status response:', data.status, 'hasQR:', data.hasQR, 'qrCode length:', data.qrCode ? data.qrCode.length : 0);
+        console.log('Status response:', data.status, 'hasQR:', data.hasQR);
 
-        // Always render the status (no page reload to prevent flashing)
-        renderStatus(data);
+        // Only re-render if status actually changed
+        const statusChanged = !lastStatus ||
+          lastStatus.status !== data.status ||
+          lastStatus.hasQR !== data.hasQR ||
+          (data.status === 'connected' && lastStatus.status !== 'connected');
+
+        if (statusChanged) {
+          renderStatus(data);
+          lastStatus = data;
+        }
 
         // Continue polling if not connected
         if (data.status !== 'connected') {
