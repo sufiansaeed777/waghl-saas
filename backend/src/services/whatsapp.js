@@ -703,6 +703,32 @@ class WhatsAppService {
 
       logger.info(`Sent message from ${subAccountId} to ${toNumber}`);
 
+      // Create WhatsAppMapping entry for this phone number (with whatsappId=null)
+      // This allows auto-matching when a LID response comes back
+      const cleanToNumber = toNumber.replace(/\D/g, '');
+      try {
+        const [mapping, created] = await WhatsAppMapping.findOrCreate({
+          where: { subAccountId, phoneNumber: cleanToNumber },
+          defaults: {
+            subAccountId,
+            phoneNumber: cleanToNumber,
+            whatsappId: null,  // Will be filled when LID is matched
+            lastActivityAt: new Date()
+          }
+        });
+        if (!created) {
+          // Update last activity time for existing mapping
+          await mapping.update({ lastActivityAt: new Date() });
+        }
+        logger.info('Created/updated phone mapping for outbound:', {
+          phoneNumber: cleanToNumber,
+          hasWhatsAppId: !!mapping.whatsappId,
+          created
+        });
+      } catch (mappingErr) {
+        logger.warn('Failed to create phone mapping:', mappingErr.message);
+      }
+
       // Trigger webhook
       await webhookService.trigger(subAccountId, 'message.sent', {
         messageId: message.id,
@@ -716,7 +742,7 @@ class WhatsAppService {
       ghlService.syncMessageToGHL(
         subAccount,
         subAccount.phoneNumber || '',
-        toNumber.replace(/\D/g, ''),
+        cleanToNumber,
         content,
         'outbound'
       ).catch(err => logger.error('GHL sync error:', err));
