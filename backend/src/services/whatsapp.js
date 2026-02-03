@@ -9,11 +9,19 @@ const emailService = require('./email');
 const logger = require('../utils/logger');
 
 // Baileys will be loaded dynamically
-let makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion;
+let makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVersion, makeCacheableSignalKeyStore;
 
 // Store active connections
 const connections = new Map();
 const qrCodes = new Map();
+
+// Message retry counter cache - tracks retry attempts per message
+// This is CRITICAL for handling decryption failures (Bad MAC errors)
+const msgRetryCounterCache = new Map();
+
+// In-memory message store for getMessage callback
+// Stores recent messages so Baileys can retry decryption
+const messageStore = new Map();
 
 const SESSION_PATH = process.env.SESSION_PATH || './sessions';
 
@@ -31,7 +39,28 @@ async function initBaileys() {
     DisconnectReason = baileys.DisconnectReason || baileys.default?.DisconnectReason;
     useMultiFileAuthState = baileys.useMultiFileAuthState || baileys.default?.useMultiFileAuthState;
     fetchLatestBaileysVersion = baileys.fetchLatestBaileysVersion || baileys.default?.fetchLatestBaileysVersion;
+    makeCacheableSignalKeyStore = baileys.makeCacheableSignalKeyStore || baileys.default?.makeCacheableSignalKeyStore;
   }
+}
+
+// Helper to store message in memory for getMessage callback
+function storeMessage(subAccountId, msg) {
+  if (!msg?.key?.id) return;
+
+  const storeKey = `${subAccountId}:${msg.key.remoteJid}:${msg.key.id}`;
+  messageStore.set(storeKey, msg);
+
+  // Clean up old messages after 10 minutes to prevent memory leak
+  setTimeout(() => {
+    messageStore.delete(storeKey);
+  }, 10 * 60 * 1000);
+}
+
+// Helper to get message from store (for retry mechanism)
+function getStoredMessage(subAccountId, key) {
+  const storeKey = `${subAccountId}:${key.remoteJid}:${key.id}`;
+  const msg = messageStore.get(storeKey);
+  return msg?.message || undefined;
 }
 
 class WhatsAppService {
@@ -63,14 +92,49 @@ class WhatsAppService {
       const { version } = await fetchLatestBaileysVersion();
 
       const pino = require('pino');
+
+      // Create socket with message retry support to handle Bad MAC decryption errors
       const socket = makeWASocket({
         version,
-        auth: state,
+        auth: {
+          creds: state.creds,
+          // Use cacheable signal key store for better key handling
+          keys: makeCacheableSignalKeyStore ? makeCacheableSignalKeyStore(state.keys, pino({ level: 'silent' })) : state.keys
+        },
         printQRInTerminal: false,
         logger: pino({ level: 'silent' }),
         browser: ['GHLWA Connector', 'Chrome', '120.0.0'],
         connectTimeoutMs: 60000,
-        qrTimeout: 60000
+        qrTimeout: 60000,
+        // CRITICAL: Message retry counter cache - enables automatic retry on decryption failure
+        msgRetryCounterCache,
+        // getMessage callback - called when Baileys needs to retry decrypting a message
+        // This is essential for handling "Bad MAC" errors
+        getMessage: async (key) => {
+          const msg = getStoredMessage(subAccountId, key);
+          if (msg) {
+            logger.info('getMessage: Found stored message for retry', { id: key.id });
+            return msg;
+          }
+          // If not in memory, try to load from database
+          try {
+            const dbMessage = await Message.findOne({
+              where: { subAccountId, messageId: key.id }
+            });
+            if (dbMessage?.metadata?.rawMessage?.message) {
+              logger.info('getMessage: Found message in database for retry', { id: key.id });
+              return dbMessage.metadata.rawMessage.message;
+            }
+          } catch (err) {
+            logger.warn('getMessage: Error loading from database', { error: err.message });
+          }
+          logger.warn('getMessage: Message not found for retry', { id: key.id });
+          return undefined;
+        },
+        // Retry message requests - when decryption fails, request resend
+        retryRequestDelayMs: 250,
+        // Mark as offline initially to avoid session conflicts
+        markOnlineOnConnect: false
       });
 
       // Handle connection updates
@@ -84,6 +148,27 @@ class WhatsAppService {
       // Handle incoming messages
       socket.ev.on('messages.upsert', async (m) => {
         await this.handleIncomingMessages(subAccountId, m);
+      });
+
+      // Handle message updates (can contain decrypted content after retry)
+      socket.ev.on('messages.update', async (updates) => {
+        for (const update of updates) {
+          if (update.update?.message) {
+            // Message was updated with decrypted content (retry succeeded)
+            logger.info('Message updated with decrypted content:', {
+              messageId: update.key?.id,
+              remoteJid: update.key?.remoteJid,
+              subAccountId
+            });
+            // Process as a new message with the decrypted content
+            const msg = {
+              key: update.key,
+              message: update.update.message,
+              pushName: update.update.pushName
+            };
+            await this.handleIncomingMessages(subAccountId, { messages: [msg], type: 'notify' });
+          }
+        }
       });
 
       // Store connection
@@ -243,6 +328,9 @@ class WhatsAppService {
 
     for (const msg of messages) {
       try {
+        // Store message for potential retry (getMessage callback)
+        storeMessage(subAccountId, msg);
+
         // Skip status messages
         if (msg.key.remoteJid === 'status@broadcast') continue;
 
@@ -445,10 +533,24 @@ class WhatsAppService {
         } else if (msg.message?.protocolMessage || msg.message?.senderKeyDistributionMessage) {
           // Skip protocol/system messages
           continue;
+        } else if (!msg.message) {
+          // Message decryption failed (Bad MAC error) - msg.message is null/undefined
+          // This happens when Signal protocol decryption fails
+          // The retry mechanism (msgRetryCounterCache + getMessage) should have already attempted retries
+          logger.warn('Message decryption failed - message object is empty:', {
+            messageId: msg.key?.id,
+            remoteJid: msg.key?.remoteJid,
+            isFromMe,
+            subAccountId,
+            hint: 'This usually indicates Signal session issues. Message retry was attempted.'
+          });
+          // Skip this message - don't sync "[Message]" placeholder to GHL
+          // The message may arrive later if retry succeeds, or may be lost
+          continue;
         } else {
           // Log unrecognized message types for debugging
           logger.warn('Unrecognized message type:', {
-            messageKeys: msg.message ? Object.keys(msg.message) : 'no message',
+            messageKeys: Object.keys(msg.message),
             subAccountId
           });
           content = '[Message]';
