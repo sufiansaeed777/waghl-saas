@@ -338,6 +338,35 @@ class StripeService {
                 .catch(err => logger.error('Failed to send subscription cancellation scheduled email:', err));
             }
 
+            // If subscription went past_due, disable non-gifted sub-accounts
+            if (status === 'past_due' && previousStatus !== 'past_due') {
+              logger.info(`Subscription past_due for customer ${customer.id}, disabling sub-accounts`);
+              // Disable all non-gifted sub-accounts
+              await SubAccount.update(
+                { isPaid: false },
+                { where: { customerId: customer.id, isGifted: false } }
+              );
+              // Send email notification about payment issue
+              emailService.sendPaymentFailed(customer.email, customer.name)
+                .catch(err => logger.error('Failed to send payment failed email:', err));
+            }
+
+            // If subscription recovered from past_due to active, re-enable sub-accounts
+            if (previousStatus === 'past_due' && status === 'active') {
+              logger.info(`Subscription recovered from past_due for customer ${customer.id}`);
+              // Re-enable all non-gifted sub-accounts (up to their slot limit)
+              const subAccounts = await SubAccount.findAll({
+                where: { customerId: customer.id, isGifted: false },
+                order: [['createdAt', 'ASC']],
+                limit: quantity
+              });
+              for (const subAccount of subAccounts) {
+                await subAccount.update({ isPaid: true });
+              }
+              emailService.sendPaymentRecovered(customer.email, customer.name)
+                .catch(err => logger.error('Failed to send payment recovered email:', err));
+            }
+
             logger.info(`Subscription updated for customer ${customer.id}: ${status}, quantity: ${quantity}, cancelAtPeriodEnd: ${isCanceledAtPeriodEnd}`);
           }
           break;

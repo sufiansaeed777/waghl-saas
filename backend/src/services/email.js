@@ -415,6 +415,53 @@ class EmailService {
     return this.sendEmail(email, subject, html);
   }
 
+  // Payment failed notification
+  async sendPaymentFailed(email, name) {
+    const subject = 'Payment Failed - Action Required';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #ef4444;">Payment Failed</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>We were unable to process your subscription payment. Your sub-accounts have been temporarily disabled.</p>
+        <div style="background-color: #fef2f2; border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Status:</strong> Payment Past Due</p>
+          <p style="margin: 10px 0 0 0;"><strong>Action Required:</strong> Update payment method</p>
+        </div>
+        <p><strong>What this means:</strong></p>
+        <ul>
+          <li>Your sub-accounts are temporarily disabled</li>
+          <li>WhatsApp messages will not be sent or received</li>
+          <li>Your data is safe and will be restored once payment is resolved</li>
+        </ul>
+        <p>Please update your payment method in the billing portal to restore access.</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
+      </div>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
+
+  // Payment recovered notification
+  async sendPaymentRecovered(email, name) {
+    const subject = 'Payment Successful - Access Restored';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #22c55e;">Payment Successful!</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>Great news! Your payment has been processed successfully and your access has been restored.</p>
+        <div style="background-color: #f0fdf4; border: 1px solid #22c55e; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>Status:</strong> Active</p>
+          <p style="margin: 10px 0 0 0;"><strong>Sub-Accounts:</strong> Re-enabled</p>
+        </div>
+        <p>Your sub-accounts are now active again. You may need to reconnect your WhatsApp if it was disconnected.</p>
+        <p>Thank you for your continued subscription!</p>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
+      </div>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
+
   // Message delivery failed notification
   async sendMessageDeliveryFailed(email, name, subAccountName, toNumber, errorMessage, messageContent = null) {
     const subject = 'Message Delivery Failed - Action Required';
