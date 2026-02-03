@@ -311,7 +311,9 @@ class WhatsAppService {
 
         // For messages with LID (both inbound and outbound), try to resolve to real phone number
         // Also track contact name from mapping for outbound messages
-        let resolvedContactName = pushName;
+        // IMPORTANT: For outbound (isFromMe), pushName is the SENDER's name, not the recipient
+        // So we should NOT use pushName for outbound - only use mapping's contactName
+        let resolvedContactName = isFromMe ? null : pushName;
 
         if (!isValidPhoneNumber) {
           logger.info('contactNumber appears to be WhatsApp internal ID, checking mapping:', { contactNumber, pushName, isFromMe });
@@ -323,14 +325,19 @@ class WhatsAppService {
 
           if (mapping) {
             resolvedPhoneNumber = mapping.phoneNumber;
-            resolvedContactName = mapping.contactName || pushName;
+            // For outbound, only use mapping's contactName (pushName is sender's name)
+            // For inbound, prefer pushName (recipient's actual WhatsApp name)
+            resolvedContactName = isFromMe ? mapping.contactName : (pushName || mapping.contactName);
             logger.info('Found existing WhatsApp ID mapping:', {
               whatsappId: contactNumber,
               phoneNumber: resolvedPhoneNumber,
               contactName: resolvedContactName
             });
-            // Update last activity
-            await mapping.update({ lastActivityAt: new Date(), contactName: pushName || mapping.contactName });
+            // Update last activity - only update contactName for inbound (pushName is the contact's name)
+            await mapping.update({
+              lastActivityAt: new Date(),
+              contactName: isFromMe ? mapping.contactName : (pushName || mapping.contactName)
+            });
           } else {
             // No mapping found - try to safely match to a recent outbound
             // SAFETY: Only auto-match if there's EXACTLY ONE unmapped number from recent outbound
@@ -348,13 +355,14 @@ class WhatsAppService {
             if (unmappedMappings.length === 1) {
               // Safe to match - only one recent unmapped number
               const unmappedMapping = unmappedMappings[0];
+              // Only update contactName with pushName for inbound (pushName is the contact's name)
               await unmappedMapping.update({
                 whatsappId: contactNumber,
-                contactName: pushName || unmappedMapping.contactName,
+                contactName: isFromMe ? unmappedMapping.contactName : (pushName || unmappedMapping.contactName),
                 lastActivityAt: new Date()
               });
               resolvedPhoneNumber = unmappedMapping.phoneNumber;
-              resolvedContactName = unmappedMapping.contactName || pushName;
+              resolvedContactName = isFromMe ? unmappedMapping.contactName : (pushName || unmappedMapping.contactName);
               logger.info('Created WhatsApp ID mapping (single unmapped):', {
                 whatsappId: contactNumber,
                 phoneNumber: resolvedPhoneNumber,
