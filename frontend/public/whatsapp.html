@@ -1054,6 +1054,21 @@
         if (res.ok) {
           // Re-render status without page reload (prevents flashing)
           loadStatus();
+        } else if (res.status === 401) {
+          // Token invalid (sub-account deleted) - clear cache and re-initialize
+          console.log('Token invalid on disconnect, clearing cache...');
+          try {
+            localStorage.removeItem('waghl_token');
+            localStorage.removeItem('waghl_locationId');
+          } catch (e) { /* ignore */ }
+          token = null;
+          isInitialized = false;
+          // Re-initialize to show fresh state
+          if (locationId && !isTemplateVariable(locationId)) {
+            await selectLocation(locationId);
+          } else {
+            init();
+          }
         } else {
           const data = await res.json().catch(() => ({}));
           alert(data.error || 'Failed to disconnect');
@@ -1105,6 +1120,25 @@
         // Don't pass locationId - token is sufficient
         const statusUrl = apiBase + '/api/embed/status/' + token;
         const res = await fetch(statusUrl);
+
+        // Handle 401 - token invalid (sub-account deleted)
+        if (res.status === 401) {
+          console.log('Token invalid during polling, clearing cache...');
+          isPolling = false;
+          try {
+            localStorage.removeItem('waghl_token');
+            localStorage.removeItem('waghl_locationId');
+          } catch (e) { /* ignore */ }
+          token = null;
+          isInitialized = false;
+          if (locationId && !isTemplateVariable(locationId)) {
+            await selectLocation(locationId);
+          } else {
+            init();
+          }
+          return;
+        }
+
         const data = await res.json();
         console.log('Status response:', data.status, 'hasQR:', data.hasQR);
 
