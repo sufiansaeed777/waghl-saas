@@ -246,68 +246,42 @@ class GHLService {
   }
 
   // Get contact by phone number
-  async getContactByPhone(customer, locationId, phoneNumber) {
+  async getContactByPhone(customer, locationId, phoneNumber, contactName = null) {
     try {
       // Clean phone number
       const cleanPhone = phoneNumber.replace(/\D/g, '');
 
       let contacts = [];
 
-      // First try the lookup endpoint with different phone formats
-      const phoneFormats = [
-        '+' + cleanPhone,              // +447440112056
-        cleanPhone,                    // 447440112056
-        '+' + cleanPhone.slice(-10),   // +7440112056 (if local)
-      ];
+      // Build search queries - try phone variations first, then name as fallback
+      const searchQueries = [
+        cleanPhone,                    // Full number: 447440112056
+        '+' + cleanPhone,              // With plus: +447440112056
+        cleanPhone.slice(-10),         // Last 10 digits: 7440112056
+        cleanPhone.slice(-6),          // Last 6 digits: 112056
+      ].filter((q, i, arr) => q.length >= 6 && arr.indexOf(q) === i);
 
-      logger.info('GHL contact lookup starting', { phoneFormats, locationId });
-
-      for (const phone of phoneFormats) {
-        try {
-          const lookupParams = new URLSearchParams({
-            locationId,
-            phone: phone
-          });
-          const lookupResponse = await this.apiRequest(customer, 'GET', `/contacts/lookup?${lookupParams.toString()}`);
-          logger.info('GHL lookup result', {
-            phone,
-            found: !!lookupResponse.contact,
-            contactPhone: lookupResponse.contact?.phone
-          });
-          if (lookupResponse.contact) {
-            contacts = [lookupResponse.contact];
-            break;
-          }
-        } catch (lookupErr) {
-          // Lookup endpoint may not exist or fail, continue to search
-          logger.debug('GHL lookup failed, trying search', { phone, error: lookupErr.message });
-        }
+      // If we have a contact name, add it as fallback search
+      if (contactName && contactName.trim()) {
+        searchQueries.push(contactName.trim());
       }
 
-      // If lookup didn't find anything, try search endpoint
-      if (contacts.length === 0) {
-        const searchQueries = [
-          cleanPhone,                    // Full number: 447440112056
-          cleanPhone.slice(-10),         // Last 10 digits: 7440112056
-          cleanPhone.slice(-6),          // Last 6 digits: 112056
-        ].filter((q, i, arr) => q.length >= 6 && arr.indexOf(q) === i);
+      logger.info('GHL contact search starting', { searchQueries, locationId });
 
-        logger.info('GHL contact search starting', { searchQueries, locationId });
-        for (const query of searchQueries) {
-          const params = new URLSearchParams({
-            locationId,
-            query: query
-          });
-          const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
-          logger.info('GHL search query result', {
-            query,
-            resultsCount: response.contacts?.length || 0,
-            contactPhones: response.contacts?.slice(0, 3).map(c => c.phone) || []
-          });
-          if (response.contacts && response.contacts.length > 0) {
-            contacts = response.contacts;
-            break;
-          }
+      for (const query of searchQueries) {
+        const params = new URLSearchParams({
+          locationId,
+          query: query
+        });
+        const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
+        logger.info('GHL search query result', {
+          query,
+          resultsCount: response.contacts?.length || 0,
+          contactPhones: response.contacts?.slice(0, 5).map(c => ({ name: c.name || c.firstName, phone: c.phone })) || []
+        });
+        if (response.contacts && response.contacts.length > 0) {
+          contacts = response.contacts;
+          break;
         }
       }
 
@@ -563,37 +537,19 @@ class GHLService {
   // Tries multiple phone formats to find existing contact
   async getOrCreateContact(customer, locationId, phoneNumber, name = null) {
     try {
-      const cleanPhone = phoneNumber.replace(/\D/g, '');
-
-      // Try to find existing contact with the phone number as-is
-      let contact = await this.getContactByPhone(customer, locationId, cleanPhone);
+      // getContactByPhone now handles all search variations including name fallback
+      const contact = await this.getContactByPhone(customer, locationId, phoneNumber, name);
       if (contact) {
-        logger.info(`Found existing GHL contact for ${phoneNumber}`, { contactId: contact.id });
+        logger.info(`Found existing GHL contact for ${phoneNumber}`, { contactId: contact.id, contactName: contact.name });
         return contact;
-      }
-
-      // Try with + prefix (international format)
-      contact = await this.getContactByPhone(customer, locationId, '+' + cleanPhone);
-      if (contact) {
-        logger.info(`Found existing GHL contact for +${cleanPhone}`, { contactId: contact.id });
-        return contact;
-      }
-
-      // Try without leading country code digits (last 10 digits for local format)
-      if (cleanPhone.length > 10) {
-        const localPhone = cleanPhone.slice(-10);
-        contact = await this.getContactByPhone(customer, locationId, localPhone);
-        if (contact) {
-          logger.info(`Found existing GHL contact for local format ${localPhone}`, { contactId: contact.id });
-          return contact;
-        }
       }
 
       // Contact not found - DO NOT auto-create
       // This prevents duplicate "WhatsApp XXX" contacts from being created
+      const cleanPhone = phoneNumber.replace(/\D/g, '');
       logger.warn(`No existing GHL contact found for ${phoneNumber}`, {
         locationId,
-        searchedFormats: [cleanPhone, '+' + cleanPhone, cleanPhone.length > 10 ? cleanPhone.slice(-10) : null].filter(Boolean)
+        searchedFormats: [cleanPhone, '+' + cleanPhone, cleanPhone.slice(-10), cleanPhone.slice(-6), name].filter(Boolean)
       });
       return null;
     } catch (error) {
