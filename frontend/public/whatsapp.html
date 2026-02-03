@@ -894,6 +894,27 @@
         const res = await fetch(statusUrl);
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
+
+          // If token is invalid (401), clear cache and retry with fresh token
+          if (res.status === 401) {
+            console.log('Token invalid, clearing cache and retrying...');
+            try {
+              localStorage.removeItem('waghl_token');
+              localStorage.removeItem('waghl_locationId');
+            } catch (e) { /* ignore */ }
+            token = null;
+            isInitialized = false;
+
+            // If we have locationId, fetch fresh token
+            if (locationId && !isTemplateVariable(locationId)) {
+              await selectLocation(locationId);
+              return;
+            }
+            // Otherwise re-initialize
+            init();
+            return;
+          }
+
           throw new Error(errorData.error || 'Invalid token');
         }
         const data = await res.json();
