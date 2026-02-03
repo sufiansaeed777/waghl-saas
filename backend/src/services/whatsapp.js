@@ -833,23 +833,36 @@ class WhatsAppService {
       logger.info(`Sent message from ${subAccountId} to ${toNumber}`);
 
       // If onWhatsApp didn't return a LID (returned phone-based JID or failed),
-      // ensure mapping has whatsappId = null so auto-match can work when LID response comes
+      // ensure mapping exists for auto-match when LID response comes
+      // BUT don't overwrite an existing valid whatsappId mapping!
       if (!whatsappId || whatsappId === cleanPhone) {
         try {
-          // Use upsert to create or update the mapping
-          // CRITICAL: Set whatsappId to null to allow auto-matching with LID later
-          // This handles the case where a previous mapping might have whatsappId = phone
-          await WhatsAppMapping.upsert({
-            subAccountId,
-            phoneNumber: cleanPhone,
-            whatsappId: null,  // Clear any existing phone-based whatsappId, will be filled when LID is matched
-            lastActivityAt: new Date()
-          }, {
-            conflictFields: ['subAccountId', 'phoneNumber']
+          // First check if a valid mapping already exists
+          const existingMapping = await WhatsAppMapping.findOne({
+            where: { subAccountId, phoneNumber: cleanPhone }
           });
-          logger.info('Created/updated fallback phone mapping (whatsappId cleared for auto-match):', {
-            phoneNumber: cleanPhone
-          });
+
+          if (existingMapping && existingMapping.whatsappId && existingMapping.whatsappId !== cleanPhone) {
+            // Valid mapping exists - just update activity, preserve whatsappId
+            await existingMapping.update({ lastActivityAt: new Date() });
+            logger.info('Preserved existing LID mapping, updated activity:', {
+              phoneNumber: cleanPhone,
+              whatsappId: existingMapping.whatsappId
+            });
+          } else {
+            // No valid mapping - create/update with null whatsappId for auto-match
+            await WhatsAppMapping.upsert({
+              subAccountId,
+              phoneNumber: cleanPhone,
+              whatsappId: null,
+              lastActivityAt: new Date()
+            }, {
+              conflictFields: ['subAccountId', 'phoneNumber']
+            });
+            logger.info('Created/updated fallback phone mapping (whatsappId cleared for auto-match):', {
+              phoneNumber: cleanPhone
+            });
+          }
         } catch (mappingErr) {
           logger.warn('Failed to create fallback phone mapping:', mappingErr.message);
         }
