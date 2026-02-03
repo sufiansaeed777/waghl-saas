@@ -610,26 +610,34 @@ class GHLService {
       const externalPhone = direction === 'inbound' ? fromNumber : toNumber;
       logger.info('External phone for GHL sync:', { externalPhone, direction, contactName, isLID });
 
-      // Use isLID flag to determine if this is a real phone number
-      // LIDs can look like valid phone numbers (15 digits starting with a country code)
-      // but they're WhatsApp internal IDs that shouldn't be used as phone numbers
+      // Check if phone looks like a valid phone number format
+      // Even if isLID flag is true, the phone might have been resolved from WhatsAppMapping
+      // So we check the actual phone format first - if it looks valid, use it
       const hasValidPhoneFormat = /^[1-9]\d{9,14}$/.test(externalPhone) && externalPhone.length <= 15;
-      const isRealPhoneNumber = hasValidPhoneFormat && !isLID;
+
       let contact = null;
 
-      if (isRealPhoneNumber) {
-        // Standard flow: get or create contact by phone number
+      if (hasValidPhoneFormat) {
+        // Phone looks valid - use standard phone-based lookup
+        // This works even if isLID=true, because the phone was resolved from WhatsAppMapping
+        logger.info('Using phone-based GHL contact lookup', {
+          externalPhone,
+          isLID,
+          phoneLength: externalPhone.length
+        });
         contact = await this.getOrCreateContact(
           subAccount,
           subAccount.ghlLocationId,
           externalPhone
         );
       } else {
-        // WhatsApp LID - use name-based matching to find existing contact
-        logger.info('Phone is WhatsApp LID, using name-based matching', {
+        // Phone doesn't look valid (likely unresolved WhatsApp LID)
+        // Try name-based matching as fallback
+        logger.info('Phone format invalid, trying name-based matching', {
           externalPhone,
           contactName,
-          isLID
+          isLID,
+          phoneLength: externalPhone.length
         });
 
         if (contactName) {
