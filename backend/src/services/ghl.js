@@ -250,13 +250,31 @@ class GHLService {
     try {
       // Clean phone number
       const cleanPhone = phoneNumber.replace(/\D/g, '');
-      const params = new URLSearchParams({
-        locationId,
-        query: cleanPhone
-      });
 
-      const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
-      const contacts = response.contacts || [];
+      // Try multiple search queries since GHL stores phones in various formats
+      // e.g., "+44 7440 112056" won't be found by searching "447440112056"
+      const searchQueries = [
+        cleanPhone,                    // Full number: 447440112056
+        cleanPhone.slice(-10),         // Last 10 digits: 7440112056
+        cleanPhone.slice(-9),          // Last 9 digits: 440112056
+        cleanPhone.slice(-7),          // Last 7 digits: 0112056
+      ].filter((q, i, arr) => q.length >= 6 && arr.indexOf(q) === i); // Unique queries, min 6 digits
+
+      let contacts = [];
+
+      // Try each search query until we find contacts
+      for (const query of searchQueries) {
+        const params = new URLSearchParams({
+          locationId,
+          query: query
+        });
+        const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
+        if (response.contacts && response.contacts.length > 0) {
+          contacts = response.contacts;
+          logger.debug('GHL contact search hit:', { query, resultsCount: contacts.length });
+          break;
+        }
+      }
 
       // Find all contacts with matching phone
       const matchingContacts = contacts.filter(c =>
