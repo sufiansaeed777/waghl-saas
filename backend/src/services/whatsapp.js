@@ -832,27 +832,23 @@ class WhatsAppService {
 
       logger.info(`Sent message from ${subAccountId} to ${toNumber}`);
 
-      // If onWhatsApp didn't create a mapping (failed or returned same number),
-      // create a fallback mapping for auto-matching when LID response comes
+      // If onWhatsApp didn't return a LID (returned phone-based JID or failed),
+      // ensure mapping has whatsappId = null so auto-match can work when LID response comes
       if (!whatsappId || whatsappId === cleanPhone) {
         try {
-          const [mapping, created] = await WhatsAppMapping.findOrCreate({
-            where: { subAccountId, phoneNumber: cleanPhone },
-            defaults: {
-              subAccountId,
-              phoneNumber: cleanPhone,
-              whatsappId: null,  // Will be filled when LID is matched
-              lastActivityAt: new Date()
-            }
-          });
-          if (!created && !mapping.whatsappId) {
-            // Update last activity time for existing unmapped entry
-            await mapping.update({ lastActivityAt: new Date() });
-          }
-          logger.info('Created/updated fallback phone mapping:', {
+          // Use upsert to create or update the mapping
+          // CRITICAL: Set whatsappId to null to allow auto-matching with LID later
+          // This handles the case where a previous mapping might have whatsappId = phone
+          await WhatsAppMapping.upsert({
+            subAccountId,
             phoneNumber: cleanPhone,
-            hasWhatsAppId: !!mapping.whatsappId,
-            created
+            whatsappId: null,  // Clear any existing phone-based whatsappId, will be filled when LID is matched
+            lastActivityAt: new Date()
+          }, {
+            conflictFields: ['subAccountId', 'phoneNumber']
+          });
+          logger.info('Created/updated fallback phone mapping (whatsappId cleared for auto-match):', {
+            phoneNumber: cleanPhone
           });
         } catch (mappingErr) {
           logger.warn('Failed to create fallback phone mapping:', mappingErr.message);
