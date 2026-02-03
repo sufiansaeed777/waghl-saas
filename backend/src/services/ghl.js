@@ -253,11 +253,13 @@ class GHLService {
 
       // Try multiple search queries since GHL stores phones in various formats
       // e.g., "+44 7440 112056" won't be found by searching "447440112056"
+      // GHL search does substring matching but spaces in stored phone break contiguity
       const searchQueries = [
         cleanPhone,                    // Full number: 447440112056
         cleanPhone.slice(-10),         // Last 10 digits: 7440112056
+        cleanPhone.slice(-6),          // Last 6 digits: 112056 (most likely to be contiguous)
         cleanPhone.slice(-9),          // Last 9 digits: 440112056
-        cleanPhone.slice(-7),          // Last 7 digits: 0112056
+        cleanPhone.slice(0, 6),        // First 6 digits: 447440 (country + area code)
       ].filter((q, i, arr) => q.length >= 6 && arr.indexOf(q) === i); // Unique queries, min 6 digits
 
       let contacts = [];
