@@ -281,11 +281,11 @@ export default function SubAccountDetail() {
                   <p className="text-xs text-gray-500 mb-1">Client's GHL Custom Menu Link:</p>
                   <div className="flex items-center gap-2">
                     <code className="text-xs bg-gray-200 px-2 py-1 rounded flex-1 overflow-x-auto">
-                      https://whatsapp.bibotcrm.it/whatsapp.html?locationId={subAccount.ghlLocationId}
+                      https://whatsapp.bibotcrm.it/whatsapp.html?locationId={subAccount.ghlLocationId}&v=2
                     </code>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(`https://whatsapp.bibotcrm.it/whatsapp.html?locationId=${subAccount.ghlLocationId}`)
+                        navigator.clipboard.writeText(`https://whatsapp.bibotcrm.it/whatsapp.html?locationId=${subAccount.ghlLocationId}&v=2`)
                         toast.success('Link copied!')
                       }}
                       className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -350,11 +350,11 @@ export default function SubAccountDetail() {
                   <p className="text-xs text-gray-500 mb-1">Or add this link to your client's GHL Custom Menu Links:</p>
                   <div className="flex items-center gap-2">
                     <code className="text-xs bg-gray-200 px-2 py-1 rounded flex-1 overflow-x-auto">
-                      https://whatsapp.bibotcrm.it/whatsapp.html?locationId={subAccount.ghlLocationId}
+                      https://whatsapp.bibotcrm.it/whatsapp.html?locationId={subAccount.ghlLocationId}&v=2
                     </code>
                     <button
                       onClick={() => {
-                        navigator.clipboard.writeText(`https://whatsapp.bibotcrm.it/whatsapp.html?locationId=${subAccount.ghlLocationId}`)
+                        navigator.clipboard.writeText(`https://whatsapp.bibotcrm.it/whatsapp.html?locationId=${subAccount.ghlLocationId}&v=2`)
                         toast.success('Link copied!')
                       }}
                       className="text-xs px-2 py-1 bg-blue-500 text-white rounded hover:bg-blue-600"
@@ -386,11 +386,11 @@ export default function SubAccountDetail() {
           </p>
           <div className="flex items-center gap-2 flex-wrap">
             <code className="text-xs bg-blue-100 px-2 py-1 rounded font-mono">
-              https://whatsapp.bibotcrm.it/whatsapp.html?locationId={'{{location.id}}'}
+              https://whatsapp.bibotcrm.it/whatsapp.html?locationId={'{{location.id}}&v=2'}
             </code>
             <button
               onClick={() => {
-                navigator.clipboard.writeText('https://whatsapp.bibotcrm.it/whatsapp.html?locationId={{location.id}}')
+                navigator.clipboard.writeText('https://whatsapp.bibotcrm.it/whatsapp.html?locationId={{location.id}}&v=2')
                 toast.success('Link copied!')
               }}
               className="text-xs px-2 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"

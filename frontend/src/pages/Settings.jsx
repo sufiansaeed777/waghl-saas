@@ -154,7 +154,7 @@ export default function Settings() {
           <p className="text-xs text-gray-500 mb-2">Copy this URL and add it to GHL → Settings → Custom Menu Links:</p>
           <div className="flex items-center gap-2">
             <code className="text-sm bg-gray-200 px-3 py-2 rounded flex-1 overflow-x-auto font-mono">
-              {'https://whatsapp.bibotcrm.it/whatsapp.html?locationId={{location.id}}'}
+              {'https://whatsapp.bibotcrm.it/whatsapp.html?locationId={{location.id}}&v=2'}
             </code>
             <button
               onClick={() => {
