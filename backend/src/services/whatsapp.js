@@ -609,6 +609,21 @@ class WhatsAppService {
     const socket = connections.get(subAccountId);
     const qrCode = qrCodes.get(subAccountId);
 
+    // Handle stale status after server restart
+    // If DB shows qr_ready or connecting but no socket/qr in memory, reset to disconnected
+    if ((subAccount.status === 'qr_ready' || subAccount.status === 'connecting') && !socket && !qrCode) {
+      logger.info(`Resetting stale status for ${subAccountId}: ${subAccount.status} -> disconnected`);
+      await subAccount.update({ status: 'disconnected' });
+      return {
+        status: 'disconnected',
+        phoneNumber: subAccount.phoneNumber,
+        isConnected: false,
+        hasQR: false,
+        qrCode: null,
+        lastConnected: subAccount.lastConnected
+      };
+    }
+
     return {
       status: subAccount.status,
       phoneNumber: subAccount.phoneNumber,
