@@ -271,7 +271,7 @@ class GHLService {
   }
 
   // Get contact by name (for matching when phone number is unavailable)
-  // Handles partial name matching (e.g., "Dan" can match "Danilo Coviello")
+  // Requires exact match OR single unambiguous partial match
   async getContactByName(customer, locationId, name) {
     try {
       if (!name || name.trim().length === 0) {
@@ -304,8 +304,7 @@ class GHLService {
 
       // Score each contact for name matching
       // Higher score = better match
-      let bestMatch = null;
-      let bestScore = 0;
+      const scoredContacts = [];
 
       for (const c of contacts) {
         const contactName = (c.name || '').toLowerCase();
@@ -315,45 +314,78 @@ class GHLService {
 
         let score = 0;
 
-        // Exact matches (highest priority)
+        // Exact matches (highest priority) - score 100
         if (contactName === normalizedName || fullName === normalizedName) {
           score = 100;
-        } else if (contactFirstName === normalizedName) {
+        }
+        // Partial matches - only used if no exact match and unambiguous
+        else if (contactFirstName === normalizedName) {
           score = 90;
         }
-        // Contact's first name starts with the search name (e.g., "Dan" matches "Danilo")
         else if (contactFirstName.startsWith(normalizedName)) {
           score = 80;
         }
-        // Contact name starts with search name
         else if (contactName.startsWith(normalizedName)) {
           score = 70;
         }
-        // Search name is contained in contact name
         else if (contactName.includes(normalizedName) || fullName.includes(normalizedName)) {
           score = 60;
         }
-        // Contact name is contained in search name
         else if (normalizedName.includes(contactFirstName) && contactFirstName.length >= 3) {
           score = 50;
         }
 
-        if (score > bestScore) {
-          bestScore = score;
-          bestMatch = c;
+        if (score > 0) {
+          scoredContacts.push({ contact: c, score, name: contactName || fullName });
         }
       }
 
-      if (bestMatch) {
-        logger.info('GHL found contact by name:', {
+      if (scoredContacts.length === 0) {
+        return null;
+      }
+
+      // Sort by score descending
+      scoredContacts.sort((a, b) => b.score - a.score);
+      const bestScore = scoredContacts[0].score;
+
+      // Get all contacts with the best score
+      const topMatches = scoredContacts.filter(sc => sc.score === bestScore);
+
+      // If exact match (score 100), use it - exact matches are unambiguous
+      if (bestScore === 100) {
+        const bestMatch = topMatches[0].contact;
+        logger.info('GHL found contact by exact name match:', {
+          searchName,
+          matchedName: bestMatch.name || bestMatch.firstName,
+          contactId: bestMatch.id
+        });
+        return bestMatch;
+      }
+
+      // For partial matches, only return if there's exactly ONE match at the best score
+      // This prevents matching "Sufian" to both "Sufian Saeed" and "Sufian Ahmed"
+      if (topMatches.length === 1) {
+        const bestMatch = topMatches[0].contact;
+        logger.info('GHL found contact by unambiguous partial match:', {
           searchName,
           matchedName: bestMatch.name || bestMatch.firstName,
           matchScore: bestScore,
           contactId: bestMatch.id
         });
+        return bestMatch;
       }
 
-      return bestMatch;
+      // Multiple contacts with same score - ambiguous, don't match
+      logger.warn('GHL name search ambiguous - multiple contacts match:', {
+        searchName,
+        matchScore: bestScore,
+        matchingContacts: topMatches.map(m => ({
+          name: m.name,
+          id: m.contact.id
+        }))
+      });
+      return null;
+
     } catch (error) {
       logger.error('GHL get contact by name error:', error);
       return null;

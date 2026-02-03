@@ -237,27 +237,31 @@ class WhatsAppService {
     }
   }
 
-  // Handle incoming messages
+  // Handle incoming messages (and outbound messages sent directly from WhatsApp)
   async handleIncomingMessages(subAccountId, { messages, type }) {
     if (type !== 'notify') return;
 
     for (const msg of messages) {
       try {
-        // Skip status messages and own messages
+        // Skip status messages
         if (msg.key.remoteJid === 'status@broadcast') continue;
-        if (msg.key.fromMe) continue;
+
+        // Determine if this is an outbound message (sent from WhatsApp, not from GHL)
+        const isFromMe = msg.key.fromMe;
 
         // Extract phone number from remoteJid
-        // Handle both regular JIDs (phone@s.whatsapp.net) and LIDs (id@lid)
+        // For inbound: remoteJid is the sender
+        // For outbound (fromMe): remoteJid is the recipient
         const remoteJid = msg.key.remoteJid;
         const isLID = remoteJid.includes('@lid');
-        let fromNumber = remoteJid.split('@')[0];
+        let contactNumber = remoteJid.split('@')[0];
 
-        // Log for debugging LID issues
-        logger.info('Incoming message JID info:', {
+        // Log for debugging
+        logger.info('Message received:', {
           remoteJid,
           isLID,
-          extractedNumber: fromNumber,
+          isFromMe,
+          extractedNumber: contactNumber,
           participant: msg.key.participant,
           pushName: msg.pushName,
           verifiedBizName: msg.verifiedBizName
@@ -269,13 +273,13 @@ class WhatsAppService {
           if (msg.key.participant) {
             const participantNumber = msg.key.participant.split('@')[0];
             if (!participantNumber.includes('lid')) {
-              fromNumber = participantNumber;
-              logger.info('Using participant number instead of LID:', { fromNumber });
+              contactNumber = participantNumber;
+              logger.info('Using participant number instead of LID:', { contactNumber });
             }
           }
 
           // Method 2: Try Baileys' built-in LID mapping (v6.6.0+)
-          if (fromNumber.includes('lid') || !/^[1-9]\d{9,14}$/.test(fromNumber)) {
+          if (contactNumber.includes('lid') || !/^[1-9]\d{9,14}$/.test(contactNumber)) {
             const socket = connections.get(subAccountId);
             if (socket && socket.signalRepository && socket.signalRepository.lidMapping) {
               try {
@@ -286,8 +290,8 @@ class WhatsAppService {
                   if (phoneJid) {
                     const resolvedNumber = phoneJid.split('@')[0];
                     if (/^[1-9]\d{9,14}$/.test(resolvedNumber)) {
-                      fromNumber = resolvedNumber;
-                      logger.info('Resolved LID via Baileys lidMapping:', { lid: remoteJid, phoneNumber: fromNumber });
+                      contactNumber = resolvedNumber;
+                      logger.info('Resolved LID via Baileys lidMapping:', { lid: remoteJid, phoneNumber: contactNumber });
                     }
                   }
                 }
@@ -298,24 +302,25 @@ class WhatsAppService {
           }
         }
 
-        // Check if fromNumber is a valid phone number or a WhatsApp internal ID
+        // Check if contactNumber is a valid phone number or a WhatsApp internal ID
         // Valid phone numbers are typically 10-15 digits and start with a country code (1-3 digits)
         // WhatsApp internal IDs are often 15+ digits or don't match phone patterns
-        const isValidPhoneNumber = /^[1-9]\d{9,14}$/.test(fromNumber) && fromNumber.length <= 15;
-        let resolvedPhoneNumber = fromNumber;
+        const isValidPhoneNumber = /^[1-9]\d{9,14}$/.test(contactNumber) && contactNumber.length <= 15;
+        let resolvedPhoneNumber = contactNumber;
         const pushName = msg.pushName || null;
 
-        if (!isValidPhoneNumber) {
-          logger.info('fromNumber appears to be WhatsApp internal ID, checking mapping:', { fromNumber, pushName });
+        // For inbound messages with LID, try to resolve to real phone number
+        if (!isValidPhoneNumber && !isFromMe) {
+          logger.info('contactNumber appears to be WhatsApp internal ID, checking mapping:', { contactNumber, pushName });
 
           // Try to find existing mapping by WhatsApp ID
           let mapping = await WhatsAppMapping.findOne({
-            where: { subAccountId, whatsappId: fromNumber }
+            where: { subAccountId, whatsappId: contactNumber }
           });
 
           if (mapping) {
             resolvedPhoneNumber = mapping.phoneNumber;
-            logger.info('Found existing WhatsApp ID mapping:', { whatsappId: fromNumber, phoneNumber: resolvedPhoneNumber });
+            logger.info('Found existing WhatsApp ID mapping:', { whatsappId: contactNumber, phoneNumber: resolvedPhoneNumber });
             // Update last activity
             await mapping.update({ lastActivityAt: new Date(), contactName: pushName || mapping.contactName });
           } else {
@@ -336,37 +341,52 @@ class WhatsAppService {
               // Safe to match - only one recent unmapped number
               const unmappedMapping = unmappedMappings[0];
               await unmappedMapping.update({
-                whatsappId: fromNumber,
+                whatsappId: contactNumber,
                 contactName: pushName,
                 lastActivityAt: new Date()
               });
               resolvedPhoneNumber = unmappedMapping.phoneNumber;
               logger.info('Created WhatsApp ID mapping (single unmapped):', {
-                whatsappId: fromNumber,
+                whatsappId: contactNumber,
                 phoneNumber: resolvedPhoneNumber,
                 pushName
               });
             } else if (unmappedMappings.length > 1) {
               // Multiple unmapped numbers - too risky to auto-match
               logger.warn('Multiple unmapped phone numbers - cannot safely auto-match WhatsApp ID:', {
-                fromNumber,
+                contactNumber,
                 pushName,
                 unmappedCount: unmappedMappings.length
               });
               // Keep using the WhatsApp ID as-is
             } else {
-              logger.warn('No recent unmapped phone number found for WhatsApp ID:', { fromNumber, pushName });
+              logger.warn('No recent unmapped phone number found for WhatsApp ID:', { contactNumber, pushName });
             }
           }
         }
 
         // Use resolvedPhoneNumber for GHL sync
         const phoneForSync = resolvedPhoneNumber;
-        logger.info('Phone number for GHL sync:', { original: fromNumber, resolved: phoneForSync, pushName });
+        logger.info('Phone number for GHL sync:', { original: contactNumber, resolved: phoneForSync, pushName, isFromMe });
 
         const subAccount = await SubAccount.findByPk(subAccountId);
 
         if (!subAccount) continue;
+
+        // Check for duplicate messages (avoid re-processing on reconnection or network issues)
+        const existingMessage = await Message.findOne({
+          where: {
+            subAccountId,
+            messageId: msg.key.id
+          }
+        });
+        if (existingMessage) {
+          logger.info('Skipping duplicate message (already processed):', {
+            messageId: msg.key.id,
+            direction: isFromMe ? 'outbound' : 'inbound'
+          });
+          continue;
+        }
 
         // Determine message type and content
         let messageType = 'text';
@@ -415,41 +435,57 @@ class WhatsAppService {
         }
 
         // Store message
+        const direction = isFromMe ? 'outbound' : 'inbound';
         const message = await Message.create({
           subAccountId,
           messageId: msg.key.id,
-          direction: 'inbound',
-          fromNumber,
-          toNumber: subAccount.phoneNumber || '',
+          direction,
+          fromNumber: isFromMe ? (subAccount.phoneNumber || '') : contactNumber,
+          toNumber: isFromMe ? contactNumber : (subAccount.phoneNumber || ''),
           messageType,
           content,
           mediaUrl,
-          status: 'delivered',
-          metadata: { rawMessage: msg }
+          status: isFromMe ? 'sent' : 'delivered',
+          metadata: { rawMessage: msg, source: isFromMe ? 'whatsapp_direct' : 'whatsapp' }
         });
 
-        logger.info(`Received message for ${subAccountId} from ${fromNumber} (resolved: ${phoneForSync})`);
+        logger.info(`${isFromMe ? 'Sent' : 'Received'} message for ${subAccountId} ${isFromMe ? 'to' : 'from'} ${contactNumber} (resolved: ${phoneForSync})`);
 
         // Trigger webhook
-        await webhookService.trigger(subAccountId, 'message.received', {
+        await webhookService.trigger(subAccountId, isFromMe ? 'message.sent' : 'message.received', {
           messageId: message.id,
-          from: phoneForSync,  // Use resolved phone number
+          [isFromMe ? 'to' : 'from']: phoneForSync,  // Use resolved phone number
           type: messageType,
           content,
-          timestamp: new Date().toISOString()
+          timestamp: new Date().toISOString(),
+          source: isFromMe ? 'whatsapp_direct' : 'whatsapp'
         });
 
         // Sync to GHL using resolved phone number (async, don't wait)
         // Pass pushName and isLID flag for name-based matching when phone number can't be resolved
-        ghlService.syncMessageToGHL(
-          subAccount,
-          phoneForSync,  // Use resolved phone number for correct contact matching
-          subAccount.phoneNumber || '',
-          content,
-          'inbound',
-          pushName,  // Pass contact name for name-based matching fallback
-          isLID      // Flag indicating this is a WhatsApp LID (not a real phone number)
-        ).catch(err => logger.error('GHL sync error:', err));
+        if (isFromMe) {
+          // Outbound message sent directly from WhatsApp
+          ghlService.syncMessageToGHL(
+            subAccount,
+            subAccount.phoneNumber || '',  // from (our number)
+            phoneForSync,                   // to (contact)
+            content,
+            'outbound',
+            null,   // No pushName for outbound
+            isLID
+          ).catch(err => logger.error('GHL sync error (outbound from WhatsApp):', err));
+        } else {
+          // Inbound message
+          ghlService.syncMessageToGHL(
+            subAccount,
+            phoneForSync,                   // from (contact)
+            subAccount.phoneNumber || '',   // to (our number)
+            content,
+            'inbound',
+            pushName,  // Pass contact name for name-based matching fallback
+            isLID      // Flag indicating this is a WhatsApp LID (not a real phone number)
+          ).catch(err => logger.error('GHL sync error:', err));
+        }
 
       } catch (error) {
         logger.error(`Handle incoming message error:`, error);
