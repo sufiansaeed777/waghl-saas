@@ -171,6 +171,89 @@ class WhatsAppService {
         }
       });
 
+      // Handle LID mapping updates (Baileys v6.6.0+/v7.x feature)
+      // This event provides LID → phone number mappings when WhatsApp syncs them
+      socket.ev.on('lid-mapping.update', async (mapping) => {
+        try {
+          logger.info('LID mapping update received:', mapping);
+          // mapping format: { lid: string, phoneNumber: string }
+          if (mapping?.lid && mapping?.phoneNumber) {
+            const cleanPhone = mapping.phoneNumber.replace(/\D/g, '');
+            const lid = mapping.lid.split('@')[0];
+            if (/^[1-9]\d{9,14}$/.test(cleanPhone)) {
+              await WhatsAppMapping.upsert({
+                subAccountId,
+                phoneNumber: cleanPhone,
+                whatsappId: lid,
+                lastActivityAt: new Date()
+              }, { conflictFields: ['subAccountId', 'phoneNumber'] });
+              logger.info('Stored LID mapping from WhatsApp sync:', {
+                phoneNumber: cleanPhone,
+                lid
+              });
+            }
+          }
+        } catch (lidErr) {
+          logger.warn('Error processing LID mapping update:', lidErr.message);
+        }
+      });
+
+      // Handle contacts sync - capture phone-to-LID mappings
+      socket.ev.on('contacts.upsert', async (contacts) => {
+        for (const contact of contacts) {
+          try {
+            const jid = contact.id;
+            if (!jid) continue;
+
+            // Check if this is a phone-based JID (contains phone number)
+            const isPhoneJid = jid.includes('@s.whatsapp.net');
+            const isLidJid = jid.includes('@lid');
+
+            if (isPhoneJid) {
+              const phoneNumber = jid.split('@')[0];
+              // Store contact info for potential LID resolution later
+              logger.debug('Contact sync (phone-based):', {
+                phone: phoneNumber,
+                name: contact.name || contact.notify,
+                verifiedName: contact.verifiedName
+              });
+            } else if (isLidJid) {
+              // LID-based contact - check if we have any phone info
+              const lid = jid.split('@')[0];
+              logger.debug('Contact sync (LID-based):', {
+                lid,
+                name: contact.name || contact.notify,
+                verifiedName: contact.verifiedName,
+                // Check for any phone fields
+                phone: contact.phone || contact.number
+              });
+
+              // If contact has a phone field (rare but possible)
+              const contactPhone = contact.phone || contact.number;
+              if (contactPhone) {
+                const cleanPhone = contactPhone.replace(/\D/g, '');
+                if (/^[1-9]\d{9,14}$/.test(cleanPhone)) {
+                  await WhatsAppMapping.upsert({
+                    subAccountId,
+                    phoneNumber: cleanPhone,
+                    whatsappId: lid,
+                    contactName: contact.name || contact.notify || null,
+                    lastActivityAt: new Date()
+                  }, { conflictFields: ['subAccountId', 'phoneNumber'] });
+                  logger.info('Stored LID mapping from contact sync:', {
+                    phoneNumber: cleanPhone,
+                    lid,
+                    name: contact.name || contact.notify
+                  });
+                }
+              }
+            }
+          } catch (contactErr) {
+            logger.warn('Error processing contact sync:', contactErr.message);
+          }
+        }
+      });
+
       // Store connection
       connections.set(subAccountId, socket);
 
