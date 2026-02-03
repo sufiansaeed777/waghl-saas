@@ -309,9 +309,12 @@ class WhatsAppService {
         let resolvedPhoneNumber = contactNumber;
         const pushName = msg.pushName || null;
 
-        // For inbound messages with LID, try to resolve to real phone number
-        if (!isValidPhoneNumber && !isFromMe) {
-          logger.info('contactNumber appears to be WhatsApp internal ID, checking mapping:', { contactNumber, pushName });
+        // For messages with LID (both inbound and outbound), try to resolve to real phone number
+        // Also track contact name from mapping for outbound messages
+        let resolvedContactName = pushName;
+
+        if (!isValidPhoneNumber) {
+          logger.info('contactNumber appears to be WhatsApp internal ID, checking mapping:', { contactNumber, pushName, isFromMe });
 
           // Try to find existing mapping by WhatsApp ID
           let mapping = await WhatsAppMapping.findOne({
@@ -320,7 +323,12 @@ class WhatsAppService {
 
           if (mapping) {
             resolvedPhoneNumber = mapping.phoneNumber;
-            logger.info('Found existing WhatsApp ID mapping:', { whatsappId: contactNumber, phoneNumber: resolvedPhoneNumber });
+            resolvedContactName = mapping.contactName || pushName;
+            logger.info('Found existing WhatsApp ID mapping:', {
+              whatsappId: contactNumber,
+              phoneNumber: resolvedPhoneNumber,
+              contactName: resolvedContactName
+            });
             // Update last activity
             await mapping.update({ lastActivityAt: new Date(), contactName: pushName || mapping.contactName });
           } else {
@@ -342,14 +350,15 @@ class WhatsAppService {
               const unmappedMapping = unmappedMappings[0];
               await unmappedMapping.update({
                 whatsappId: contactNumber,
-                contactName: pushName,
+                contactName: pushName || unmappedMapping.contactName,
                 lastActivityAt: new Date()
               });
               resolvedPhoneNumber = unmappedMapping.phoneNumber;
+              resolvedContactName = unmappedMapping.contactName || pushName;
               logger.info('Created WhatsApp ID mapping (single unmapped):', {
                 whatsappId: contactNumber,
                 phoneNumber: resolvedPhoneNumber,
-                pushName
+                contactName: resolvedContactName
               });
             } else if (unmappedMappings.length > 1) {
               // Multiple unmapped numbers - too risky to auto-match
@@ -471,7 +480,7 @@ class WhatsAppService {
             phoneForSync,                   // to (contact)
             content,
             'outbound',
-            null,   // No pushName for outbound
+            resolvedContactName,            // Contact name from mapping (for LID resolution)
             isLID
           ).catch(err => logger.error('GHL sync error (outbound from WhatsApp):', err));
         } else {

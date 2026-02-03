@@ -642,6 +642,31 @@ class GHLService {
 
           if (contact) {
             logger.info('Found GHL contact by name:', { contactId: contact.id, contactName: contact.name });
+
+            // Store the LID → phone mapping for future lookups
+            // This allows outbound messages to find the contact even without name
+            if (contact.phone && isLID) {
+              const { WhatsAppMapping } = require('../models');
+              const cleanPhone = contact.phone.replace(/\D/g, '');
+              try {
+                await WhatsAppMapping.upsert({
+                  subAccountId: subAccount.id,
+                  phoneNumber: cleanPhone,
+                  whatsappId: externalPhone,  // The LID
+                  contactName: contactName,
+                  lastActivityAt: new Date()
+                }, {
+                  conflictFields: ['subAccountId', 'phoneNumber']
+                });
+                logger.info('Stored LID mapping from name match:', {
+                  phoneNumber: cleanPhone,
+                  whatsappId: externalPhone,
+                  contactName
+                });
+              } catch (mappingErr) {
+                logger.warn('Failed to store LID mapping:', mappingErr.message);
+              }
+            }
           }
         }
 
