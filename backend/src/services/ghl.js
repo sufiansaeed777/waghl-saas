@@ -263,15 +263,20 @@ class GHLService {
       let contacts = [];
 
       // Try each search query until we find contacts
+      logger.info('GHL contact search starting', { searchQueries, locationId });
       for (const query of searchQueries) {
         const params = new URLSearchParams({
           locationId,
           query: query
         });
         const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
+        logger.info('GHL search query result', {
+          query,
+          resultsCount: response.contacts?.length || 0,
+          contactPhones: response.contacts?.slice(0, 3).map(c => c.phone) || []
+        });
         if (response.contacts && response.contacts.length > 0) {
           contacts = response.contacts;
-          logger.debug('GHL contact search hit:', { query, resultsCount: contacts.length });
           break;
         }
       }
