@@ -506,46 +506,46 @@ class GHLService {
     }
   }
 
-  // Get or create contact by phone
+  // Get contact by phone (search only, no auto-create)
+  // Tries multiple phone formats to find existing contact
   async getOrCreateContact(customer, locationId, phoneNumber, name = null) {
     try {
-      // Try to find existing contact first
-      let contact = await this.getContactByPhone(customer, locationId, phoneNumber);
+      const cleanPhone = phoneNumber.replace(/\D/g, '');
 
+      // Try to find existing contact with the phone number as-is
+      let contact = await this.getContactByPhone(customer, locationId, cleanPhone);
       if (contact) {
         logger.info(`Found existing GHL contact for ${phoneNumber}`, { contactId: contact.id });
         return contact;
       }
 
-      // Create new contact (handles duplicate errors internally)
-      const result = await this.createContact(customer, locationId, {
-        phone: phoneNumber,
-        name: name || `WhatsApp ${phoneNumber}`,
-        source: 'GHLWA Connector'
-      });
-
-      if (result.contact) {
-        if (result.isDuplicate) {
-          logger.info(`Found duplicate GHL contact for ${phoneNumber}`, { contactId: result.contact.id });
-        } else {
-          logger.info(`Created new GHL contact for ${phoneNumber}`, { contactId: result.contact.id });
-        }
-        return result.contact;
-      }
-
-      // If createContact returned null (duplicate exists but couldn't retrieve)
-      // Try searching by phone one more time
-      contact = await this.getContactByPhone(customer, locationId, phoneNumber);
+      // Try with + prefix (international format)
+      contact = await this.getContactByPhone(customer, locationId, '+' + cleanPhone);
       if (contact) {
-        logger.info(`Found contact on retry for ${phoneNumber}`, { contactId: contact.id });
+        logger.info(`Found existing GHL contact for +${cleanPhone}`, { contactId: contact.id });
         return contact;
       }
 
-      logger.error(`Could not get or create contact for ${phoneNumber}`);
+      // Try without leading country code digits (last 10 digits for local format)
+      if (cleanPhone.length > 10) {
+        const localPhone = cleanPhone.slice(-10);
+        contact = await this.getContactByPhone(customer, locationId, localPhone);
+        if (contact) {
+          logger.info(`Found existing GHL contact for local format ${localPhone}`, { contactId: contact.id });
+          return contact;
+        }
+      }
+
+      // Contact not found - DO NOT auto-create
+      // This prevents duplicate "WhatsApp XXX" contacts from being created
+      logger.warn(`No existing GHL contact found for ${phoneNumber}`, {
+        locationId,
+        searchedFormats: [cleanPhone, '+' + cleanPhone, cleanPhone.length > 10 ? cleanPhone.slice(-10) : null].filter(Boolean)
+      });
       return null;
     } catch (error) {
-      logger.error('GHL get or create contact error:', error.message);
-      throw error;
+      logger.error('GHL get contact error:', error.message);
+      return null;
     }
   }
 
