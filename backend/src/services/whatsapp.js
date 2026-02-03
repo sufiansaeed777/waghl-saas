@@ -789,7 +789,7 @@ class WhatsAppService {
       ghlService.syncMessageToGHL(
         subAccount,
         subAccount.phoneNumber || '',
-        cleanToNumber,
+        cleanPhone,
         content,
         'outbound'
       ).catch(err => logger.error('GHL sync error:', err));
