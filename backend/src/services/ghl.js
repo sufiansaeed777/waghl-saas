@@ -258,12 +258,43 @@ class GHLService {
       const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
       const contacts = response.contacts || [];
 
-      // Find exact phone match
-      return contacts.find(c =>
+      // Find all contacts with matching phone
+      const matchingContacts = contacts.filter(c =>
         c.phone?.replace(/\D/g, '') === cleanPhone ||
         c.phone?.replace(/\D/g, '').endsWith(cleanPhone) ||
         cleanPhone.endsWith(c.phone?.replace(/\D/g, '') || '')
-      ) || null;
+      );
+
+      if (matchingContacts.length === 0) {
+        return null;
+      }
+
+      if (matchingContacts.length === 1) {
+        return matchingContacts[0];
+      }
+
+      // Multiple matches - prefer contacts with real names over auto-generated "WhatsApp XXX" names
+      // This prevents picking a duplicate over the original contact
+      const realNameContact = matchingContacts.find(c => {
+        const name = (c.name || c.contactName || '').trim();
+        // Skip if name is empty, starts with "WhatsApp", or is just the phone number
+        if (!name) return false;
+        if (name.toLowerCase().startsWith('whatsapp')) return false;
+        if (name.replace(/\D/g, '') === cleanPhone) return false;
+        return true;
+      });
+
+      if (realNameContact) {
+        logger.info('Preferring contact with real name over duplicate:', {
+          selectedId: realNameContact.id,
+          selectedName: realNameContact.name || realNameContact.contactName,
+          totalMatches: matchingContacts.length
+        });
+        return realNameContact;
+      }
+
+      // No contact with real name found, return first match
+      return matchingContacts[0];
     } catch (error) {
       logger.error('GHL get contact by phone error:', error);
       return null;
