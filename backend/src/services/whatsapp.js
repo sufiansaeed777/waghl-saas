@@ -305,7 +305,10 @@ class WhatsAppService {
         // Check if contactNumber is a valid phone number or a WhatsApp internal ID
         // Valid phone numbers are typically 10-15 digits and start with a country code (1-3 digits)
         // WhatsApp internal IDs are often 15+ digits or don't match phone patterns
-        const isValidPhoneNumber = /^[1-9]\d{9,14}$/.test(contactNumber) && contactNumber.length <= 15;
+        // Check if this looks like a valid phone number
+        // BUT if isLID flag is set, we know it's a LID regardless of format
+        const looksLikePhone = /^[1-9]\d{9,14}$/.test(contactNumber) && contactNumber.length <= 15;
+        const isValidPhoneNumber = looksLikePhone && !isLID;
         let resolvedPhoneNumber = contactNumber;
         const pushName = msg.pushName || null;
 
@@ -315,7 +318,7 @@ class WhatsAppService {
         // So we should NOT use pushName for outbound - only use mapping's contactName
         let resolvedContactName = isFromMe ? null : pushName;
 
-        if (!isValidPhoneNumber) {
+        if (!isValidPhoneNumber || isLID) {
           logger.info('contactNumber appears to be WhatsApp internal ID, checking mapping:', { contactNumber, pushName, isFromMe });
 
           // Try to find existing mapping by WhatsApp ID
