@@ -612,14 +612,19 @@ class GHLService {
 
       // Check if phone looks like a valid phone number format
       // Even if isLID flag is true, the phone might have been resolved from WhatsAppMapping
-      // So we check the actual phone format first - if it looks valid, use it
       const hasValidPhoneFormat = /^[1-9]\d{9,14}$/.test(externalPhone) && externalPhone.length <= 15;
+
+      // Detect unresolved LIDs: if isLID=true AND phone is 14+ digits, it's likely still an internal ID
+      // Real phone numbers are typically 10-13 digits, LIDs are 14-17 digits
+      const looksLikeUnresolvedLID = isLID && externalPhone.length >= 14;
+
+      // Phone is usable if it has valid format AND is not an unresolved LID
+      const isUsablePhone = hasValidPhoneFormat && !looksLikeUnresolvedLID;
 
       let contact = null;
 
-      if (hasValidPhoneFormat) {
-        // Phone looks valid - use standard phone-based lookup
-        // This works even if isLID=true, because the phone was resolved from WhatsAppMapping
+      if (isUsablePhone) {
+        // Phone looks valid and was resolved - use standard phone-based lookup
         logger.info('Using phone-based GHL contact lookup', {
           externalPhone,
           isLID,
@@ -631,13 +636,14 @@ class GHLService {
           externalPhone
         );
       } else {
-        // Phone doesn't look valid (likely unresolved WhatsApp LID)
+        // Phone is either invalid format OR an unresolved LID
         // Try name-based matching as fallback
-        logger.info('Phone format invalid, trying name-based matching', {
+        logger.info('Phone is unresolved LID or invalid, trying name-based matching', {
           externalPhone,
           contactName,
           isLID,
-          phoneLength: externalPhone.length
+          phoneLength: externalPhone.length,
+          looksLikeUnresolvedLID
         });
 
         if (contactName) {
