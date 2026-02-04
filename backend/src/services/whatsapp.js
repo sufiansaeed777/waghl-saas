@@ -13,7 +13,7 @@ let makeWASocket, DisconnectReason, useMultiFileAuthState, fetchLatestBaileysVer
 
 // Store active connections
 const connections = new Map();
-const qrCodes = new Map();
+const qrCodes = new Map();  // Stores { qrCode, timestamp } for each subAccountId
 
 // Message retry counter cache - tracks retry attempts per message
 // This is CRITICAL for handling decryption failures (Bad MAC errors)
@@ -278,7 +278,7 @@ class WhatsAppService {
       // Handle QR code
       if (qr) {
         const qrDataUrl = await QRCode.toDataURL(qr);
-        qrCodes.set(subAccountId, qrDataUrl);
+        qrCodes.set(subAccountId, { qrCode: qrDataUrl, timestamp: Date.now() });
         await subAccount.update({ status: 'qr_ready' });
 
         logger.info(`QR code generated for ${subAccountId}`);
@@ -919,7 +919,8 @@ class WhatsAppService {
 
   // Get QR code
   getQRCode(subAccountId) {
-    return qrCodes.get(subAccountId) || null;
+    const qrData = qrCodes.get(subAccountId);
+    return qrData?.qrCode || null;
   }
 
   // Get connection status
@@ -930,11 +931,11 @@ class WhatsAppService {
     }
 
     const socket = connections.get(subAccountId);
-    const qrCode = qrCodes.get(subAccountId);
+    const qrData = qrCodes.get(subAccountId);  // Now stores { qrCode, timestamp }
 
     // Handle stale status after server restart
     // If DB shows qr_ready or connecting but no socket/qr in memory, reset to disconnected
-    if ((subAccount.status === 'qr_ready' || subAccount.status === 'connecting') && !socket && !qrCode) {
+    if ((subAccount.status === 'qr_ready' || subAccount.status === 'connecting') && !socket && !qrData) {
       logger.info(`Resetting stale status for ${subAccountId}: ${subAccount.status} -> disconnected`);
       await subAccount.update({ status: 'disconnected' });
       return {
@@ -943,6 +944,7 @@ class WhatsAppService {
         isConnected: false,
         hasQR: false,
         qrCode: null,
+        qrTimestamp: null,
         lastConnected: subAccount.lastConnected
       };
     }
@@ -951,8 +953,9 @@ class WhatsAppService {
       status: subAccount.status,
       phoneNumber: subAccount.phoneNumber,
       isConnected: socket?.user ? true : false,
-      hasQR: !!qrCode,
-      qrCode: qrCode || null,
+      hasQR: !!qrData,
+      qrCode: qrData?.qrCode || null,
+      qrTimestamp: qrData?.timestamp || null,  // Used by clients to detect QR changes
       lastConnected: subAccount.lastConnected
     };
   }

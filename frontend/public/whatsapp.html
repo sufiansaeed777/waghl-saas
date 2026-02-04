@@ -383,41 +383,48 @@
       }
     }
 
-    // Try localStorage for saved token (from OAuth or setup page)
+    // Helper: Get namespaced localStorage key (prevents cross-location token sharing)
+    function getStorageKey(key, locId) {
+      return locId ? `waghl_${key}_${locId}` : null;
+    }
+
+    // Helper: Save to localStorage with location namespace
+    function saveToStorage(key, value, locId) {
+      if (!locId || isTemplateVariable(locId)) return;
+      try {
+        localStorage.setItem(getStorageKey(key, locId), value);
+        console.log(`Saved ${key} to localStorage for location:`, locId);
+      } catch (e) { /* ignore */ }
+    }
+
+    // Helper: Load from localStorage with location namespace
+    function loadFromStorage(key, locId) {
+      if (!locId || isTemplateVariable(locId)) return null;
+      try {
+        return localStorage.getItem(getStorageKey(key, locId));
+      } catch (e) { return null; }
+    }
+
+    // Helper: Clear from localStorage with location namespace
+    function clearFromStorage(locId) {
+      if (!locId || isTemplateVariable(locId)) return;
+      try {
+        localStorage.removeItem(getStorageKey('token', locId));
+        console.log('Cleared token from localStorage for location:', locId);
+      } catch (e) { /* ignore */ }
+    }
+
+    // Try localStorage for saved token - ONLY if we have a valid locationId
+    // This prevents cross-location token sharing
     let savedToken = null;
-    let savedLocationId = null;
-    try {
-      savedToken = localStorage.getItem('waghl_token');
-      savedLocationId = localStorage.getItem('waghl_locationId');
-      if (savedToken) console.log('Found saved token in localStorage');
-      if (savedLocationId) console.log('Found saved locationId in localStorage:', savedLocationId);
-    } catch (e) {
-      console.log('localStorage not available (likely iframe restriction):', e.message);
-    }
-
-    // Save token to localStorage if we have one in URL
-    if (token) {
-      try {
-        localStorage.setItem('waghl_token', token);
-        console.log('Saved token to localStorage');
-      } catch (e) { /* ignore */ }
-    }
+    // Load saved token for this location (will be used as fallback in init())
     if (locationId && !isTemplateVariable(locationId)) {
-      try {
-        localStorage.setItem('waghl_locationId', locationId);
-        console.log('Saved locationId to localStorage');
-      } catch (e) { /* ignore */ }
+      savedToken = loadFromStorage('token', locationId);
+      if (savedToken) console.log('Found saved token in localStorage for location:', locationId);
     }
 
-    // Use saved values if not in URL
-    if (!token && savedToken) {
-      token = savedToken;
-      console.log('Using token from localStorage');
-    }
-    if (!locationId && savedLocationId && !isTemplateVariable(savedLocationId)) {
-      locationId = savedLocationId;
-      console.log('Using locationId from localStorage');
-    }
+    // NOTE: Don't save or use tokens here - init() will fetch fresh token based on locationId
+    // This prevents cross-location token contamination
 
     // Handle error from redirect
     let hasError = false;
@@ -721,11 +728,6 @@
       console.log('Selected location:', locId);
       locationId = locId;
 
-      // Save to localStorage for future visits
-      try {
-        localStorage.setItem('waghl_locationId', locId);
-      } catch (e) { /* ignore */ }
-
       // Show loading
       document.getElementById('content').innerHTML = `
         <div class="loading">
@@ -744,10 +746,8 @@
         const data = await res.json();
         token = data.token;
 
-        // Save token too
-        try {
-          localStorage.setItem('waghl_token', token);
-        } catch (e) { /* ignore */ }
+        // Save token namespaced by locationId
+        saveToStorage('token', token, locId);
 
         if (data.subAccountName) {
           document.getElementById('subAccountName').textContent = data.subAccountName;
@@ -759,6 +759,7 @@
     }
 
     // Main initialization with complete fallback chain
+    // PRIORITY: Always use locationId to fetch correct token (prevents cross-location contamination)
     async function init() {
       // Prevent multiple initializations
       if (isInitialized) {
@@ -767,67 +768,43 @@
       }
       isInitialized = true;
       console.log('=== Starting initialization ===');
+      console.log('Initial state - token:', !!token, 'locationId:', locationId);
 
-      // STEP 1: Already have token? Use it directly
-      if (token) {
-        console.log('Step 1: Using provided token');
-        loadStatus();
-        return;
-      }
+      // STEP 1: Try to get locationId from all sources first
+      // This ensures we always fetch the correct token for the current GHL location
 
-      // STEP 2: Try SSO key if provided
-      if (ssoKey && await trySSO()) {
-        console.log('Step 2: SSO key worked');
-        loadStatus();
-        return;
-      }
-
-      // STEP 3: Try cookie-based auth
-      if (!locationId) {
-        const cookieAuth = getGhlAuthCookie();
-        if (cookieAuth && cookieAuth.token) {
-          console.log('Step 3: Using cookie auth');
-          token = cookieAuth.token;
-          locationId = cookieAuth.locationId;
-          loadStatus();
-          return;
-        }
-      }
-
-      // STEP 4: Try localStorage
-      if (!locationId && savedLocationId && !isTemplateVariable(savedLocationId)) {
-        console.log('Step 4: Using localStorage locationId');
-        locationId = savedLocationId;
-      }
-      if (!token && savedToken) {
-        console.log('Step 4: Using localStorage token');
-        token = savedToken;
-        loadStatus();
-        return;
-      }
-
-      // STEP 5: Try referrer extraction
+      // 1a: Try referrer extraction if no locationId
       if (!locationId) {
         locationId = tryExtractLocationId();
         if (locationId) {
-          console.log('Step 5: Extracted from referrer');
+          console.log('Step 1a: Extracted locationId from referrer:', locationId);
         }
       }
 
-      // STEP 6: Try SSO postMessage with retry
+      // 1b: Try SSO postMessage if still no locationId
       if (!locationId) {
-        console.log('Step 6: Trying SSO postMessage...');
+        console.log('Step 1b: Trying SSO postMessage...');
         const ssoLocationId = await trySSOWithRetry(3, 2000);
         if (ssoLocationId) {
-          console.log('Step 6: SSO returned locationId:', ssoLocationId);
+          console.log('Step 1b: SSO returned locationId:', ssoLocationId);
           locationId = ssoLocationId;
         }
       }
 
-      // STEP 7: If we have locationId, fetch token
+      // 1c: Try cookie for locationId (only use if we don't have one yet)
+      if (!locationId) {
+        const cookieAuth = getGhlAuthCookie();
+        if (cookieAuth && cookieAuth.locationId) {
+          console.log('Step 1c: Got locationId from cookie:', cookieAuth.locationId);
+          locationId = cookieAuth.locationId;
+        }
+      }
+
+      // STEP 2: If we have a valid locationId, ALWAYS fetch fresh token
+      // This prevents using stale/wrong tokens from other locations
       if (locationId && !isTemplateVariable(locationId)) {
         try {
-          console.log('Step 7: Fetching token for locationId:', locationId);
+          console.log('Step 2: Fetching fresh token for locationId:', locationId);
           const res = await fetch(apiBase + '/api/embed/token-by-location/' + locationId);
           if (!res.ok) {
             const data = await res.json();
@@ -836,11 +813,8 @@
           const data = await res.json();
           token = data.token;
 
-          // Save for future
-          try {
-            localStorage.setItem('waghl_token', token);
-            localStorage.setItem('waghl_locationId', locationId);
-          } catch (e) { /* ignore */ }
+          // Save token namespaced by locationId
+          saveToStorage('token', token, locationId);
 
           if (data.subAccountName) {
             document.getElementById('subAccountName').textContent = data.subAccountName;
@@ -848,13 +822,36 @@
           loadStatus();
           return;
         } catch (err) {
-          console.log('Step 7: Token fetch failed:', err.message);
-          // Fall through to location picker
+          console.log('Step 2: Token fetch failed:', err.message);
+          // Fall through to other methods
         }
       }
 
-      // STEP 8: Show location picker as final fallback
-      console.log('Step 8: Showing location picker');
+      // STEP 3: No locationId available - try token directly (from URL param)
+      // This is for direct links with ?token=xxx
+      if (token) {
+        console.log('Step 3: Using token from URL (no locationId available)');
+        loadStatus();
+        return;
+      }
+
+      // STEP 4: Try SSO key exchange
+      if (ssoKey && await trySSO()) {
+        console.log('Step 4: SSO key worked');
+        loadStatus();
+        return;
+      }
+
+      // STEP 5: Try localStorage token (only if we have matching locationId cached)
+      if (savedToken && locationId) {
+        console.log('Step 5: Using localStorage token for location:', locationId);
+        token = savedToken;
+        loadStatus();
+        return;
+      }
+
+      // STEP 6: Show location picker as final fallback
+      console.log('Step 6: Showing location picker');
       const locations = await fetchLocations();
       showLocationPicker(locations);
     }
@@ -898,10 +895,7 @@
           // If token is invalid (401), clear cache and retry with fresh token
           if (res.status === 401) {
             console.log('Token invalid, clearing cache and retrying...');
-            try {
-              localStorage.removeItem('waghl_token');
-              localStorage.removeItem('waghl_locationId');
-            } catch (e) { /* ignore */ }
+            clearFromStorage(locationId);
             token = null;
             isInitialized = false;
 
@@ -952,9 +946,6 @@
           </p>
           <button class="btn btn-danger" onclick="disconnect()">
             Disconnect WhatsApp
-          </button>
-          <button class="btn btn-secondary" style="margin-top: 12px;" onclick="uninstallGhl()">
-            Uninstall from GHL
           </button>
         `;
       } else if (hasQR) {
@@ -1057,10 +1048,7 @@
         } else if (res.status === 401) {
           // Token invalid (sub-account deleted) - clear cache and re-initialize
           console.log('Token invalid on disconnect, clearing cache...');
-          try {
-            localStorage.removeItem('waghl_token');
-            localStorage.removeItem('waghl_locationId');
-          } catch (e) { /* ignore */ }
+          clearFromStorage(locationId);
           token = null;
           isInitialized = false;
           // Re-initialize to show fresh state
@@ -1075,33 +1063,6 @@
         }
       } catch (err) {
         alert('Disconnect failed');
-      }
-    }
-
-    async function uninstallGhl() {
-      if (!confirm('Are you sure you want to uninstall this app from GHL?\n\nThis will:\n- Disconnect WhatsApp\n- Remove the app from your GHL location')) return;
-
-      try {
-        // Token is sufficient authentication
-        const res = await fetch(apiBase + '/api/embed/ghl-uninstall/' + token, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
-        });
-        const data = await res.json();
-        if (res.ok && data.success) {
-          alert('App uninstalled successfully!');
-          document.getElementById('content').innerHTML = `
-            <div class="info-box" style="background: #d1fae5; border-color: #10b981;">
-              <p><strong>App Uninstalled!</strong></p>
-              <p>The app has been removed from your GHL location. You can close this window.</p>
-            </div>
-          `;
-        } else {
-          alert(data.error || 'Failed to uninstall');
-        }
-      } catch (err) {
-        alert('Uninstall failed: ' + err.message);
       }
     }
 
@@ -1125,10 +1086,7 @@
         if (res.status === 401) {
           console.log('Token invalid during polling, clearing cache...');
           isPolling = false;
-          try {
-            localStorage.removeItem('waghl_token');
-            localStorage.removeItem('waghl_locationId');
-          } catch (e) { /* ignore */ }
+          clearFromStorage(locationId);
           token = null;
           isInitialized = false;
           if (locationId && !isTemplateVariable(locationId)) {
@@ -1140,12 +1098,13 @@
         }
 
         const data = await res.json();
-        console.log('Status response:', data.status, 'hasQR:', data.hasQR);
+        console.log('Status response:', data.status, 'hasQR:', data.hasQR, 'qrTimestamp:', data.qrTimestamp);
 
-        // Only re-render if status actually changed
+        // Only re-render if status actually changed (including QR refresh via timestamp)
         const statusChanged = !lastStatus ||
           lastStatus.status !== data.status ||
           lastStatus.hasQR !== data.hasQR ||
+          lastStatus.qrTimestamp !== data.qrTimestamp ||  // Detect QR code refresh
           (data.status === 'connected' && lastStatus.status !== 'connected');
 
         if (statusChanged) {
