@@ -601,13 +601,13 @@ class WhatsAppService {
           messageType = 'video';
           content = msg.message.videoMessage.caption || '[Video]';
         } else if (msg.message?.stickerMessage) {
-          messageType = 'sticker';
+          messageType = 'text';
           content = '[Sticker]';
         } else if (msg.message?.contactMessage) {
-          messageType = 'contact';
+          messageType = 'text';
           content = msg.message.contactMessage.displayName || '[Contact]';
         } else if (msg.message?.locationMessage) {
-          messageType = 'location';
+          messageType = 'text';
           content = '[Location shared]';
         } else if (msg.message?.reactionMessage) {
           // Skip reactions - they don't need to be synced as separate messages
