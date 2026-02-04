@@ -9,6 +9,7 @@ const logger = require('./utils/logger');
 const routes = require('./routes');
 const { initializeRedis } = require('./config/redis');
 const whatsappService = require('./services/whatsapp');
+const trialCronService = require('./services/trialCron');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -173,6 +174,10 @@ async function startServer() {
       logger.info('Restoring WhatsApp sessions...');
       await whatsappService.restoreSessions();
       logger.info('WhatsApp session restoration complete');
+
+      // Start trial cron service (Option C: checks expired trials + sends reminders)
+      trialCronService.start();
+      logger.info('Trial cron service started');
     });
 
   } catch (error) {

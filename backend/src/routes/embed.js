@@ -77,7 +77,44 @@ router.get('/token-by-location/:locationId', async (req, res) => {
       logger.warn('Customer account is inactive for locationId', { locationId, customerId: subAccount.customerId });
       return res.status(403).json({
         error: 'Account inactive',
-        message: 'This account has been deactivated. Please contact support.'
+        message: 'This account has been deactivated. Please contact support.',
+        errorCode: 'ACCOUNT_INACTIVE'
+      });
+    }
+
+    // Check if subscription is active (trial or paid)
+    const customer = subAccount.customer;
+    const validStatuses = ['active', 'trialing'];
+
+    // Check for expired trial
+    if (customer.subscriptionStatus === 'trialing' && customer.trialEndsAt) {
+      if (new Date(customer.trialEndsAt) < new Date()) {
+        logger.warn('Trial expired for customer accessing embed', { locationId, customerId: customer.id });
+        return res.status(402).json({
+          error: 'Trial expired',
+          message: 'Your free trial has ended. Please subscribe to continue using WhatsApp integration.',
+          errorCode: 'TRIAL_EXPIRED'
+        });
+      }
+    }
+
+    // Check subscription status
+    if (!validStatuses.includes(customer.subscriptionStatus) && customer.role !== 'admin' && !customer.hasUnlimitedAccess) {
+      logger.warn('No active subscription for embed access', { locationId, customerId: customer.id, status: customer.subscriptionStatus });
+      return res.status(402).json({
+        error: 'Subscription required',
+        message: 'An active subscription is required. Please subscribe to use WhatsApp integration.',
+        errorCode: 'NO_SUBSCRIPTION'
+      });
+    }
+
+    // Check if sub-account is paid
+    if (!subAccount.isPaid && customer.role !== 'admin' && !customer.hasUnlimitedAccess) {
+      logger.warn('Sub-account not paid for embed access', { locationId, subAccountId: subAccount.id });
+      return res.status(402).json({
+        error: 'Payment required',
+        message: 'This sub-account requires an active subscription.',
+        errorCode: 'SUBACCOUNT_NOT_PAID'
       });
     }
 
@@ -422,12 +459,53 @@ router.get('/status/:token', async (req, res) => {
       return res.status(401).json({ error: 'Invalid token' });
     }
 
-    // Get sub-account to verify locationId if provided
-    if (locationId) {
-      const subAccount = await SubAccount.findByPk(subAccountId);
-      if (subAccount && subAccount.ghlLocationId !== locationId) {
-        logger.warn(`Status: Location ID mismatch for token`);
-        return res.status(403).json({ error: 'Location ID mismatch' });
+    // Get sub-account with customer to check subscription
+    const subAccount = await SubAccount.findByPk(subAccountId, {
+      include: [{ model: Customer, as: 'customer' }]
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // Verify locationId if provided
+    if (locationId && subAccount.ghlLocationId !== locationId) {
+      logger.warn(`Status: Location ID mismatch for token`);
+      return res.status(403).json({ error: 'Location ID mismatch' });
+    }
+
+    // Check subscription status for non-admin users
+    const customer = subAccount.customer;
+    if (customer && customer.role !== 'admin' && !customer.hasUnlimitedAccess) {
+      const validStatuses = ['active', 'trialing'];
+
+      // Check for expired trial
+      if (customer.subscriptionStatus === 'trialing' && customer.trialEndsAt) {
+        if (new Date(customer.trialEndsAt) < new Date()) {
+          return res.status(402).json({
+            error: 'Trial expired',
+            message: 'Your free trial has ended. Please subscribe to continue.',
+            errorCode: 'TRIAL_EXPIRED'
+          });
+        }
+      }
+
+      // Check subscription status
+      if (!validStatuses.includes(customer.subscriptionStatus)) {
+        return res.status(402).json({
+          error: 'Subscription required',
+          message: 'An active subscription is required.',
+          errorCode: 'NO_SUBSCRIPTION'
+        });
+      }
+
+      // Check if sub-account is paid
+      if (!subAccount.isPaid) {
+        return res.status(402).json({
+          error: 'Payment required',
+          message: 'This sub-account requires an active subscription.',
+          errorCode: 'SUBACCOUNT_NOT_PAID'
+        });
       }
     }
 

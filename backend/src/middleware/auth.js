@@ -19,6 +19,29 @@ const authenticateJWT = async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid or inactive account' });
     }
 
+    // OPTION B: Check if trial has expired on every API call
+    if (customer.subscriptionStatus === 'trialing' && customer.trialEndsAt) {
+      if (new Date(customer.trialEndsAt) < new Date()) {
+        logger.info(`Trial expired for customer ${customer.id}, disabling access`);
+
+        // Trial expired - update status and mark trial as used
+        await customer.update({
+          subscriptionStatus: 'inactive',
+          subscriptionQuantity: 0,
+          hasUsedTrial: true
+        });
+
+        // Disable all non-gifted sub-accounts
+        await SubAccount.update(
+          { isPaid: false },
+          { where: { customerId: customer.id, isGifted: false } }
+        );
+
+        // Refresh customer object with updated values
+        await customer.reload();
+      }
+    }
+
     req.customer = customer;
     req.user = customer; // Also set req.user for compatibility
     next();

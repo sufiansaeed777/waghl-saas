@@ -740,7 +740,14 @@
       try {
         const res = await fetch(apiBase + '/api/embed/token-by-location/' + locId);
         if (!res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
+
+          // Handle subscription/payment errors (402)
+          if (res.status === 402) {
+            showSubscriptionError(data);
+            return;
+          }
+
           throw new Error(data.error || 'Location not found');
         }
         const data = await res.json();
@@ -909,6 +916,12 @@
             return;
           }
 
+          // Handle subscription/payment errors (402)
+          if (res.status === 402) {
+            showSubscriptionError(errorData);
+            return;
+          }
+
           throw new Error(errorData.error || 'Invalid token');
         }
         const data = await res.json();
@@ -922,6 +935,42 @@
           </div>
         `;
       }
+    }
+
+    // Show subscription/payment error with appropriate message
+    function showSubscriptionError(errorData) {
+      const errorCode = errorData.errorCode || 'UNKNOWN';
+      let title = 'Subscription Required';
+      let message = errorData.message || 'An active subscription is required to use this feature.';
+      let icon = '💳';
+
+      if (errorCode === 'TRIAL_EXPIRED') {
+        title = 'Free Trial Ended';
+        icon = '⏰';
+      } else if (errorCode === 'NO_SUBSCRIPTION') {
+        title = 'Subscription Required';
+        icon = '💳';
+      } else if (errorCode === 'SUBACCOUNT_NOT_PAID') {
+        title = 'Payment Required';
+        icon = '💳';
+      } else if (errorCode === 'ACCOUNT_INACTIVE') {
+        title = 'Account Inactive';
+        icon = '🚫';
+      }
+
+      document.getElementById('content').innerHTML = `
+        <div style="text-align: center; padding: 20px;">
+          <div style="font-size: 48px; margin-bottom: 20px;">${icon}</div>
+          <h2 style="color: #ef4444; margin-bottom: 12px;">${title}</h2>
+          <p style="color: #6b7280; margin-bottom: 24px;">${message}</p>
+          <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; text-align: left;">
+            <p style="color: #991b1b; font-size: 14px; margin: 0;">
+              <strong>What to do:</strong><br>
+              Please contact your administrator or visit your account settings to subscribe.
+            </p>
+          </div>
+        </div>
+      `;
     }
 
     function renderStatus(status) {

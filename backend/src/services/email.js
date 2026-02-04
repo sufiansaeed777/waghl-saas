@@ -462,6 +462,64 @@ class EmailService {
     return this.sendEmail(email, subject, html);
   }
 
+  // Trial reminder email (sent before trial expires)
+  async sendTrialReminder(email, name, daysRemaining) {
+    const subject = `Your Free Trial Expires in ${daysRemaining} Day${daysRemaining !== 1 ? 's' : ''}`;
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #f59e0b;">Trial Ending Soon</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>Your free trial of GHLWA Connector will expire in <strong>${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}</strong>.</p>
+        <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>What happens after trial:</strong></p>
+          <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+            <li>Your sub-accounts will be disabled</li>
+            <li>WhatsApp connections will stop working</li>
+            <li>Messages will not be sent or received</li>
+          </ul>
+        </div>
+        <p><strong>Don't lose your connections!</strong> Subscribe now to keep your WhatsApp integrations running.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${process.env.FRONTEND_URL || 'https://whatsapp.bibotcrm.it'}/settings" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Subscribe Now
+          </a>
+        </div>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
+      </div>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
+
+  // Trial expired email
+  async sendTrialExpired(email, name) {
+    const subject = 'Your Free Trial Has Ended';
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <h2 style="color: #ef4444;">Trial Expired</h2>
+        <p>Hi ${name || 'there'},</p>
+        <p>Your free trial of GHLWA Connector has ended.</p>
+        <div style="background-color: #fef2f2; border: 1px solid #ef4444; border-radius: 8px; padding: 20px; margin: 20px 0;">
+          <p style="margin: 0;"><strong>What this means:</strong></p>
+          <ul style="margin: 10px 0 0 0; padding-left: 20px;">
+            <li>Your sub-accounts have been disabled</li>
+            <li>WhatsApp connections have stopped</li>
+            <li>Messages are no longer being sent or received</li>
+          </ul>
+        </div>
+        <p><strong>Want to continue?</strong> Subscribe to reactivate your sub-accounts instantly. All your settings and connections will be restored.</p>
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${process.env.FRONTEND_URL || 'https://whatsapp.bibotcrm.it'}/settings" style="background-color: #0f766e; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
+            Subscribe Now
+          </a>
+        </div>
+        <p style="color: #666; font-size: 12px;">- The GHLWA Connector Team</p>
+      </div>
+    `;
+
+    return this.sendEmail(email, subject, html);
+  }
+
   // Message delivery failed notification
   async sendMessageDeliveryFailed(email, name, subAccountName, toNumber, errorMessage, messageContent = null) {
     const subject = 'Message Delivery Failed - Action Required';
