@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Setup GHLWA Connector</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      padding: 40px;
+      max-width: 480px;
+      width: 100%;
+      text-align: center;
+    }
+
+    .logo {
+      width: 64px;
+      height: 64px;
+      margin-bottom: 20px;
+    }
+
+    h1 {
+      color: #1a1a2e;
+      font-size: 24px;
+      margin-bottom: 8px;
+    }
+
+    .subtitle {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+
+    .form-group {
+      text-align: left;
+      margin-bottom: 24px;
+    }
+
+    label {
+      display: block;
+      color: #333;
+      font-weight: 600;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    input {
+      width: 100%;
+      padding: 14px 16px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+      box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.2);
+    }
+
+    input::placeholder {
+      color: #aaa;
+    }
+
+    .help-text {
+      font-size: 12px;
+      color: #888;
+      margin-top: 8px;
+      line-height: 1.4;
+    }
+
+    button {
+      width: 100%;
+      padding: 16px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4);
+    }
+
+    button:active {
+      transform: translateY(0);
+    }
+
+    button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .message {
+      padding: 16px;
+      border-radius: 8px;
+      margin-top: 24px;
+      display: none;
+    }
+
+    .message.success {
+      background: #f0fdf4;
+      color: #065f46;
+      border: 1px solid #bbf7d0;
+    }
+
+    .message.error {
+      background: #fef2f2;
+      color: #991b1b;
+      border: 1px solid #fecaca;
+    }
+
+    .message.show {
+      display: block;
+    }
+
+    .instructions {
+      background: #f8fafc;
+      border-radius: 8px;
+      padding: 20px;
+      margin-top: 24px;
+      text-align: left;
+    }
+
+    .instructions h3 {
+      color: #334155;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .instructions ol {
+      color: #64748b;
+      font-size: 13px;
+      line-height: 1.8;
+      padding-left: 20px;
+    }
+
+    .instructions code {
+      background: #e2e8f0;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <svg class="logo" viewBox="0 0 24 24" fill="#25D366">
+      <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+    </svg>
+
+    <h1>Setup GHLWA Connector</h1>
+    <p class="subtitle">Enter your GHL Location ID to enable WhatsApp integration in your GoHighLevel sidebar.</p>
+
+    <form id="setupForm">
+      <div class="form-group">
+        <label for="locationId">GHL Location ID</label>
+        <input
+          type="text"
+          id="locationId"
+          name="locationId"
+          placeholder="e.g., abc123XYZ456..."
+          required
+          pattern="[a-zA-Z0-9]{10,50}"
+        >
+        <p class="help-text">
+          Find this in GHL: Settings → Business Info → Location ID
+        </p>
+      </div>
+
+      <button type="submit" id="submitBtn">Setup Connection</button>
+    </form>
+
+    <div id="successMessage" class="message success">
+      <strong>Setup Complete!</strong><br><br>
+      Your GHLWA Connector is now configured. Go to GoHighLevel and click the <strong>WhatsApp</strong> button in the left sidebar to connect your WhatsApp account.
+    </div>
+
+    <div id="errorMessage" class="message error">
+      <strong>Setup Failed</strong><br>
+      <span id="errorText"></span>
+    </div>
+
+    <div class="instructions">
+      <h3>How to find your Location ID:</h3>
+      <ol>
+        <li>Log into GoHighLevel</li>
+        <li>Go to <strong>Settings</strong> (gear icon)</li>
+        <li>Click <strong>Business Info</strong></li>
+        <li>Copy the <strong>Location ID</strong> value</li>
+      </ol>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('setupForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const successMessage = document.getElementById('successMessage');
+    const errorMessage = document.getElementById('errorMessage');
+    const errorText = document.getElementById('errorText');
+    const locationIdInput = document.getElementById('locationId');
+
+    // Check if already set up
+    const existingToken = localStorage.getItem('waghl_token');
+    const existingLocationId = localStorage.getItem('waghl_locationId');
+    if (existingToken && existingLocationId) {
+      locationIdInput.value = existingLocationId;
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const locationId = locationIdInput.value.trim();
+
+      if (!locationId) {
+        showError('Please enter a Location ID');
+        return;
+      }
+
+      // Validate format
+      if (!/^[a-zA-Z0-9]{10,50}$/.test(locationId)) {
+        showError('Invalid Location ID format. It should be 10-50 alphanumeric characters.');
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Setting up...';
+      hideMessages();
+
+      try {
+        // Call the session endpoint to get a token
+        const response = await fetch(`/api/embed/session?locationId=${encodeURIComponent(locationId)}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || data.message || 'Failed to setup');
+        }
+
+        if (!data.token) {
+          throw new Error('No token received from server');
+        }
+
+        // Save to localStorage
+        localStorage.setItem('waghl_token', data.token);
+        localStorage.setItem('waghl_locationId', locationId);
+
+        console.log('Setup complete - token saved to localStorage');
+
+        // Show success
+        form.style.display = 'none';
+        successMessage.classList.add('show');
+
+      } catch (error) {
+        console.error('Setup error:', error);
+
+        let errorMsg = error.message;
+        if (errorMsg.includes('not found') || errorMsg.includes('Location not found')) {
+          errorMsg = 'Location ID not found. Make sure the app is installed for this location and the ID is correct.';
+        }
+
+        showError(errorMsg);
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Setup Connection';
+      }
+    });
+
+    function showError(message) {
+      errorText.textContent = message;
+      errorMessage.classList.add('show');
+      successMessage.classList.remove('show');
+    }
+
+    function hideMessages() {
+      errorMessage.classList.remove('show');
+      successMessage.classList.remove('show');
+    }
+  </script>
+</body>
+</html>

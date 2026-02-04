@@ -1,0 +1,1054 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WhatsApp Connection</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+      background: linear-gradient(135deg, #0f766e 0%, #134e4a 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .container {
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      padding: 40px;
+      max-width: 450px;
+      width: 100%;
+      text-align: center;
+    }
+    .logo {
+      width: 60px;
+      height: 60px;
+      background: #0f766e;
+      border-radius: 12px;
+      margin: 0 auto 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .logo svg { width: 36px; height: 36px; fill: white; }
+    h1 { color: #1f2937; font-size: 24px; margin-bottom: 8px; }
+    .subtitle { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 500;
+      margin-bottom: 24px;
+    }
+    .status-connected { background: #d1fae5; color: #065f46; }
+    .status-disconnected { background: #fee2e2; color: #991b1b; }
+    .status-connecting { background: #fef3c7; color: #92400e; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .status-connected .status-dot { background: #10b981; }
+    .status-disconnected .status-dot { background: #ef4444; }
+    .status-connecting .status-dot { background: #f59e0b; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .phone-number { font-size: 18px; font-weight: 600; color: #0f766e; margin-bottom: 16px; }
+    .qr-container {
+      background: #f9fafb;
+      border: 2px dashed #d1d5db;
+      border-radius: 12px;
+      padding: 20px;
+      margin-bottom: 24px;
+    }
+    .qr-code { max-width: 256px; width: 100%; height: auto; border-radius: 8px; }
+    .qr-instructions { color: #6b7280; font-size: 13px; margin-top: 12px; line-height: 1.5; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      width: 100%;
+    }
+    .btn-primary { background: #0f766e; color: white; }
+    .btn-primary:hover { background: #0d655e; }
+    .btn-primary:disabled { background: #9ca3af; cursor: not-allowed; }
+    .btn-danger { background: #fee2e2; color: #991b1b; }
+    .btn-danger:hover { background: #fecaca; }
+    .btn-secondary { background: #f3f4f6; color: #374151; }
+    .btn-secondary:hover { background: #e5e7eb; }
+    .spinner {
+      width: 20px;
+      height: 20px;
+      border: 2px solid transparent;
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .info-box {
+      background: #eff6ff;
+      border: 1px solid #bfdbfe;
+      border-radius: 8px;
+      padding: 12px;
+      margin-top: 16px;
+      text-align: left;
+    }
+    .info-box p { color: #1e40af; font-size: 12px; line-height: 1.5; }
+    .connected-info {
+      background: #f0fdf4;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .connected-info svg { width: 48px; height: 48px; fill: #22c55e; margin-bottom: 12px; }
+    .error-box { background: #fee2e2; border-radius: 12px; padding: 40px; text-align: center; }
+    .error-box h1 { color: #991b1b; margin-bottom: 12px; }
+    .error-box p { color: #6b7280; }
+    .loading { padding: 60px 20px; }
+    .loading .spinner { width: 48px; height: 48px; border-width: 4px; color: #0f766e; margin: 0 auto 20px; }
+    .location-picker { margin-top: 20px; }
+    .location-picker select {
+      width: 100%;
+      padding: 12px 16px;
+      border: 2px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 16px;
+      background: white;
+      cursor: pointer;
+    }
+    .location-picker select:focus {
+      outline: none;
+      border-color: #0f766e;
+    }
+    .setup-box {
+      background: #fef3c7;
+      border: 1px solid #f59e0b;
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .setup-box h2 { color: #92400e; font-size: 18px; margin-bottom: 12px; }
+    .setup-box p { color: #78350f; font-size: 14px; line-height: 1.5; }
+
+    /* Modal styles */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      opacity: 0;
+      visibility: hidden;
+      transition: all 0.3s ease;
+    }
+    .modal-overlay.show {
+      opacity: 1;
+      visibility: visible;
+    }
+    .modal {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      max-width: 400px;
+      width: 90%;
+      text-align: center;
+      transform: scale(0.9);
+      transition: transform 0.3s ease;
+    }
+    .modal-overlay.show .modal {
+      transform: scale(1);
+    }
+    .modal-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+    }
+    .modal-icon.success { background: #d1fae5; }
+    .modal-icon.error { background: #fee2e2; }
+    .modal-icon svg { width: 32px; height: 32px; }
+    .modal-icon.success svg { fill: #10b981; }
+    .modal-icon.error svg { fill: #ef4444; }
+    .modal h2 { font-size: 20px; margin-bottom: 12px; color: #1f2937; }
+    .modal p { color: #6b7280; margin-bottom: 24px; line-height: 1.5; }
+    .modal .btn { margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+      </svg>
+    </div>
+    <h1>WhatsApp Connection</h1>
+    <p class="subtitle" id="subAccountName">Loading...</p>
+    <div id="content">
+      <div class="loading">
+        <div class="spinner"></div>
+        <p style="color: #6b7280;">Loading...</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Success Modal -->
+  <div class="modal-overlay" id="successModal">
+    <div class="modal">
+      <div class="modal-icon success">
+        <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
+      </div>
+      <h2>Connection Successful!</h2>
+      <p id="successMessage">GHL location has been connected successfully. You can now connect your WhatsApp.</p>
+      <button class="btn btn-primary" onclick="closeModal('successModal'); loadStatus();">Continue</button>
+    </div>
+  </div>
+
+  <!-- Error Modal -->
+  <div class="modal-overlay" id="errorModal">
+    <div class="modal">
+      <div class="modal-icon error">
+        <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+      </div>
+      <h2>Connection Failed</h2>
+      <p id="errorMessage">An error occurred while connecting to GHL.</p>
+      <button class="btn btn-secondary" onclick="closeModal('errorModal')">Close</button>
+    </div>
+  </div>
+
+  <script>
+    // Get parameters from URL (query string and hash)
+    const urlParams = new URLSearchParams(window.location.search);
+    const hashParams = new URLSearchParams(window.location.hash.replace('#', ''));
+    let token = urlParams.get('token') || hashParams.get('token');
+    let locationId = urlParams.get('locationId') || hashParams.get('locationId') ||
+                     urlParams.get('location_id') || hashParams.get('location_id');
+    let ssoKey = urlParams.get('ssoKey') || hashParams.get('ssoKey');
+    let errorParam = urlParams.get('error');
+    const apiBase = window.location.origin;
+
+    // Debug: Log what we received
+    console.log('URL Params:', { token: !!token, locationId, ssoKey: !!ssoKey, error: errorParam, hash: window.location.hash });
+    console.log('Referrer:', document.referrer);
+    console.log('Full URL:', window.location.href);
+
+    // Modal functions
+    function showModal(modalId) {
+      document.getElementById(modalId).classList.add('show');
+    }
+
+    function closeModal(modalId) {
+      document.getElementById(modalId).classList.remove('show');
+    }
+
+    function showSuccessModal(message) {
+      document.getElementById('successMessage').textContent = message || 'GHL location has been connected successfully!';
+      showModal('successModal');
+    }
+
+    function showErrorModal(message) {
+      document.getElementById('errorMessage').textContent = message || 'An error occurred while connecting.';
+      showModal('errorModal');
+    }
+
+    // Open GHL OAuth in popup window
+    function openGhlOAuth() {
+      const authUrl = apiBase + '/api/ghl/auth';
+      const width = 600;
+      const height = 700;
+      const left = (screen.width - width) / 2;
+      const top = (screen.height - height) / 2;
+
+      window.open(
+        authUrl,
+        'GHL OAuth',
+        `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+      );
+    }
+
+    // Listen for OAuth result from popup
+    window.addEventListener('message', function(event) {
+      console.log('Received postMessage:', event.data);
+
+      if (event.data && event.data.type === 'GHL_OAUTH_RESULT') {
+        if (event.data.success) {
+          // Success - update token and locationId, show success modal
+          token = event.data.token;
+          locationId = event.data.locationId;
+          showSuccessModal(event.data.message);
+        } else {
+          // Error - show error modal
+          showErrorModal(event.data.message);
+        }
+      }
+    });
+
+    // Helper: Check if locationId is an unresolved template variable
+    function isTemplateVariable(id) {
+      if (!id) return true;
+      // Check all possible variants of unresolved GHL template variables
+      const templatePatterns = [
+        '{location.id}',
+        '{{location.id}}',
+        '%7Blocation.id%7D',           // URL encoded single braces
+        '%7B%7Blocation.id%7D%7D',     // URL encoded double braces
+        'location.id',
+        '{{location_id}}',
+        '{location_id}',
+        '[[location.id]]',
+        '[[location_id]]'
+      ];
+      return templatePatterns.some(p => id === p || id.includes('location.id') || id.includes('location_id}') || id.includes('[[') || id.includes(']]'));
+    }
+
+    // PRIORITY 1: Extract locationId from GHL referrer URL (most reliable in iframe)
+    function extractFromReferrer() {
+      try {
+        const referrer = document.referrer;
+        if (referrer) {
+          // GHL URLs look like: app.gohighlevel.com/v2/location/ABC123/...
+          const match = referrer.match(/\/location\/([a-zA-Z0-9]+)/);
+          if (match && match[1]) {
+            console.log('Extracted locationId from referrer:', match[1]);
+            return match[1];
+          }
+        }
+      } catch (e) {
+        console.log('Failed to extract from referrer:', e);
+      }
+      return null;
+    }
+
+    // Clean up template variables FIRST, before any logic
+    if (isTemplateVariable(locationId)) {
+      console.log('LocationId is a template variable, clearing:', locationId);
+      locationId = null;
+    }
+
+    // If no valid locationId from URL, try referrer IMMEDIATELY
+    if (!locationId) {
+      locationId = extractFromReferrer();
+    }
+
+    // PRIORITY: Try to read ghl_auth cookie (set during OAuth callback)
+    function getGhlAuthCookie() {
+      try {
+        const cookies = document.cookie.split(';');
+        for (let cookie of cookies) {
+          const [name, value] = cookie.trim().split('=');
+          if (name === 'ghl_auth' && value) {
+            const decoded = decodeURIComponent(value);
+            const [cookieLocationId, cookieToken] = decoded.split(':');
+            if (cookieLocationId && cookieToken) {
+              console.log('Found ghl_auth cookie for location:', cookieLocationId);
+              return { locationId: cookieLocationId, token: cookieToken };
+            }
+          }
+        }
+      } catch (e) {
+        console.log('Failed to read ghl_auth cookie:', e);
+      }
+      return null;
+    }
+
+    // If no token and no valid locationId, try cookie
+    if (!token && !locationId) {
+      const cookieAuth = getGhlAuthCookie();
+      if (cookieAuth) {
+        token = cookieAuth.token;
+        locationId = cookieAuth.locationId;
+        console.log('Using auth from cookie');
+      }
+    }
+
+    // Try localStorage for saved token (from OAuth or setup page)
+    let savedToken = null;
+    let savedLocationId = null;
+    try {
+      savedToken = localStorage.getItem('waghl_token');
+      savedLocationId = localStorage.getItem('waghl_locationId');
+      if (savedToken) console.log('Found saved token in localStorage');
+      if (savedLocationId) console.log('Found saved locationId in localStorage:', savedLocationId);
+    } catch (e) {
+      console.log('localStorage not available (likely iframe restriction):', e.message);
+    }
+
+    // Save token to localStorage if we have one in URL
+    if (token) {
+      try {
+        localStorage.setItem('waghl_token', token);
+        console.log('Saved token to localStorage');
+      } catch (e) { /* ignore */ }
+    }
+    if (locationId && !isTemplateVariable(locationId)) {
+      try {
+        localStorage.setItem('waghl_locationId', locationId);
+        console.log('Saved locationId to localStorage');
+      } catch (e) { /* ignore */ }
+    }
+
+    // Use saved values if not in URL
+    if (!token && savedToken) {
+      token = savedToken;
+      console.log('Using token from localStorage');
+    }
+    if (!locationId && savedLocationId && !isTemplateVariable(savedLocationId)) {
+      locationId = savedLocationId;
+      console.log('Using locationId from localStorage');
+    }
+
+    // Handle error from redirect
+    let hasError = false;
+
+    if (errorParam) {
+      hasError = true;
+      const errorMessages = {
+        'location_not_found': 'Location not found. Please install the app from the GHL Marketplace first.',
+        'missing_location': 'Could not identify your GHL location.',
+        'server_error': 'Server error. Please try again later.'
+      };
+      document.getElementById('content').innerHTML = `
+        <div class="error-box">
+          <h1>Setup Required</h1>
+          <p>${errorMessages[errorParam] || 'An error occurred.'}</p>
+          <div class="info-box" style="margin-top: 16px;">
+            <p><strong>To fix this:</strong><br>
+            1. Install the app from the GHL Marketplace<br>
+            2. Complete the OAuth authorization<br>
+            3. Try again</p>
+          </div>
+        </div>
+      `;
+    }
+
+    console.log('Final values:', { token: !!token, locationId });
+
+    // Method 1: Try SSO key first (most reliable for GHL Custom Pages)
+    async function trySSO() {
+      if (!ssoKey) return false;
+
+      try {
+        console.log('Attempting SSO exchange...');
+        const res = await fetch(apiBase + '/api/embed/sso', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ssoKey })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          token = data.token;
+          if (data.subAccountName) {
+            document.getElementById('subAccountName').textContent = data.subAccountName;
+          }
+          console.log('SSO successful, locationId:', data.locationId);
+          return true;
+        }
+      } catch (e) {
+        console.log('SSO failed:', e.message);
+      }
+      return false;
+    }
+
+    // Method 2: Try to extract locationId from referrer or parent (fallback)
+    function tryExtractLocationId() {
+      // From referrer URL
+      try {
+        const referrer = document.referrer;
+        const locationMatch = referrer.match(/\/location\/([a-zA-Z0-9]+)/);
+        if (locationMatch) {
+          console.log('Found locationId in referrer:', locationMatch[1]);
+          return locationMatch[1];
+        }
+      } catch (e) {}
+
+      // From parent URL (if accessible)
+      try {
+        const parentUrl = window.parent.location.href;
+        const parentMatch = parentUrl.match(/\/location\/([a-zA-Z0-9]+)/);
+        if (parentMatch) {
+          console.log('Found locationId in parent:', parentMatch[1]);
+          return parentMatch[1];
+        }
+      } catch (e) {
+        console.log('Cannot access parent (cross-origin)');
+      }
+
+      return null;
+    }
+
+    // Method 3: Try GHL's postMessage SDK - REQUEST_USER_DATA
+    function requestGHLContext() {
+      try {
+        console.log('Requesting user data from GHL parent...');
+        // GHL's official method to get user context
+        window.parent.postMessage({ message: "REQUEST_USER_DATA" }, "*");
+        // Also try other possible formats
+        window.parent.postMessage({ type: 'REQUEST_CONTEXT' }, '*');
+        window.parent.postMessage({ action: 'getContext' }, '*');
+      } catch (e) {
+        console.log('Cannot send postMessage to parent:', e);
+      }
+    }
+
+    // Listen for postMessage from GHL
+    window.addEventListener('message', function(event) {
+      // Log all messages for debugging
+      if (event.data && event.data.type !== 'rrweb') {
+        console.log('Received postMessage:', event.origin, JSON.stringify(event.data).substring(0, 200));
+      }
+
+      // Accept messages from GHL domains
+      const ghlDomains = ['gohighlevel.com', 'leadconnectorhq.com', 'msgsndr.com'];
+      const isGHL = ghlDomains.some(d => event.origin.includes(d));
+
+      if (isGHL || event.origin === window.location.origin) {
+        const data = event.data;
+        if (data) {
+          // Handle GHL's REQUEST_USER_DATA_RESPONSE
+          if (data.message === 'REQUEST_USER_DATA_RESPONSE' && data.payload) {
+            console.log('Got GHL user data response (encrypted):', data.payload.substring(0, 50) + '...');
+            // Send to backend for decryption
+            decryptGHLData(data.payload);
+            return;
+          }
+
+          // Check various possible location ID fields (unencrypted)
+          const newLocationId = data.locationId || data.location_id || data.activeLocation ||
+                               (data.location && data.location.id) ||
+                               (data.data && data.data.locationId);
+          if (newLocationId && !isTemplateVariable(newLocationId)) {
+            console.log('Got locationId from postMessage:', newLocationId);
+            locationId = newLocationId;
+            init();
+          }
+        }
+      }
+    });
+
+    // Try to decrypt GHL user data via backend
+    async function decryptGHLData(encryptedData) {
+      try {
+        console.log('Sending encrypted data to backend for decryption...');
+        const res = await fetch(apiBase + '/api/embed/decrypt-ghl', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ encryptedData })
+        });
+        if (res.ok) {
+          const result = await res.json();
+          if (result.activeLocation) {
+            console.log('Decrypted locationId:', result.activeLocation);
+            locationId = result.activeLocation;
+            init();
+          }
+        } else {
+          console.log('Decryption failed - Shared Secret not configured?');
+        }
+      } catch (e) {
+        console.log('Decrypt error:', e.message);
+      }
+    }
+
+    // SSO with retry and timeout
+    async function trySSOWithRetry(maxRetries = 3, timeoutMs = 2000) {
+      console.log('Attempting SSO with retry...');
+
+      return new Promise((resolve) => {
+        let resolved = false;
+        let retryCount = 0;
+
+        // Handler for SSO response
+        const handleResponse = (event) => {
+          if (resolved) return;
+
+          const ghlDomains = ['gohighlevel.com', 'leadconnectorhq.com', 'msgsndr.com'];
+          const isGHL = ghlDomains.some(d => event.origin.includes(d));
+
+          if (isGHL && event.data && event.data.message === 'REQUEST_USER_DATA_RESPONSE' && event.data.payload) {
+            console.log('Got SSO response!');
+            resolved = true;
+            window.removeEventListener('message', handleResponse);
+
+            // Decrypt the payload
+            fetch(apiBase + '/api/embed/decrypt-ghl', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ encryptedData: event.data.payload })
+            })
+            .then(res => res.ok ? res.json() : null)
+            .then(data => {
+              if (data && data.activeLocation) {
+                resolve(data.activeLocation);
+              } else {
+                resolve(null);
+              }
+            })
+            .catch(() => resolve(null));
+          }
+        };
+
+        window.addEventListener('message', handleResponse);
+
+        // Send request with retries
+        const sendRequest = () => {
+          if (resolved || retryCount >= maxRetries) {
+            if (!resolved) {
+              console.log('SSO timed out after', retryCount, 'retries');
+              window.removeEventListener('message', handleResponse);
+              resolve(null);
+            }
+            return;
+          }
+
+          console.log('Sending REQUEST_USER_DATA (attempt', retryCount + 1, ')');
+          try {
+            window.parent.postMessage({ message: "REQUEST_USER_DATA" }, "*");
+          } catch (e) {
+            console.log('postMessage error:', e);
+          }
+
+          retryCount++;
+          setTimeout(sendRequest, timeoutMs / maxRetries);
+        };
+
+        sendRequest();
+
+        // Final timeout
+        setTimeout(() => {
+          if (!resolved) {
+            resolved = true;
+            window.removeEventListener('message', handleResponse);
+            resolve(null);
+          }
+        }, timeoutMs);
+      });
+    }
+
+    // Fetch available locations for picker
+    // If locationId is provided, only fetch that specific location (security)
+    async function fetchLocations() {
+      try {
+        // Include locationId filter if available - ensures only accessible locations are shown
+        const locUrl = apiBase + '/api/embed/locations' + (locationId ? '?locationId=' + locationId : '');
+        const res = await fetch(locUrl);
+        if (res.ok) {
+          const data = await res.json();
+          return data.locations || [];
+        }
+      } catch (e) {
+        console.log('Failed to fetch locations:', e);
+      }
+      return [];
+    }
+
+    // Show location picker UI
+    function showLocationPicker(locations) {
+      if (locations.length === 0) {
+        showError('No GHL locations found. Click below to connect your GHL location.', true);
+        return;
+      }
+
+      // If only one location, auto-select it
+      if (locations.length === 1) {
+        console.log('Only one location, auto-selecting:', locations[0].id);
+        selectLocation(locations[0].id);
+        return;
+      }
+
+      // Show picker for multiple locations
+      const options = locations.map(loc =>
+        `<option value="${loc.id}">${loc.name}</option>`
+      ).join('');
+
+      document.getElementById('content').innerHTML = `
+        <div class="setup-box">
+          <h2>Select Your Location</h2>
+          <p>Multiple GHL locations found. Please select the one you want to connect:</p>
+        </div>
+        <div class="location-picker">
+          <select id="locationSelect">
+            <option value="">-- Select Location --</option>
+            ${options}
+          </select>
+          <button class="btn btn-primary" onclick="onLocationSelected()">
+            Continue
+          </button>
+        </div>
+        <div class="info-box">
+          <p><strong>Tip:</strong> Your selection will be remembered for future visits.</p>
+        </div>
+      `;
+    }
+
+    // Handle location selection
+    function onLocationSelected() {
+      const select = document.getElementById('locationSelect');
+      const selectedId = select.value;
+
+      if (!selectedId) {
+        alert('Please select a location');
+        return;
+      }
+
+      selectLocation(selectedId);
+    }
+
+    // Select a location and continue
+    async function selectLocation(locId) {
+      console.log('Selected location:', locId);
+      locationId = locId;
+
+      // Save to localStorage for future visits
+      try {
+        localStorage.setItem('waghl_locationId', locId);
+      } catch (e) { /* ignore */ }
+
+      // Show loading
+      document.getElementById('content').innerHTML = `
+        <div class="loading">
+          <div class="spinner"></div>
+          <p style="color: #6b7280;">Loading...</p>
+        </div>
+      `;
+
+      // Fetch token for this location
+      try {
+        const res = await fetch(apiBase + '/api/embed/token-by-location/' + locId);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.error || 'Location not found');
+        }
+        const data = await res.json();
+        token = data.token;
+
+        // Save token too
+        try {
+          localStorage.setItem('waghl_token', token);
+        } catch (e) { /* ignore */ }
+
+        if (data.subAccountName) {
+          document.getElementById('subAccountName').textContent = data.subAccountName;
+        }
+        loadStatus();
+      } catch (err) {
+        showError(err.message || 'Failed to load. Please try again.');
+      }
+    }
+
+    // Main initialization with complete fallback chain
+    async function init() {
+      console.log('=== Starting initialization ===');
+
+      // STEP 1: Already have token? Use it directly
+      if (token) {
+        console.log('Step 1: Using provided token');
+        loadStatus();
+        return;
+      }
+
+      // STEP 2: Try SSO key if provided
+      if (ssoKey && await trySSO()) {
+        console.log('Step 2: SSO key worked');
+        loadStatus();
+        return;
+      }
+
+      // STEP 3: Try cookie-based auth
+      if (!locationId) {
+        const cookieAuth = getGhlAuthCookie();
+        if (cookieAuth && cookieAuth.token) {
+          console.log('Step 3: Using cookie auth');
+          token = cookieAuth.token;
+          locationId = cookieAuth.locationId;
+          loadStatus();
+          return;
+        }
+      }
+
+      // STEP 4: Try localStorage
+      if (!locationId && savedLocationId && !isTemplateVariable(savedLocationId)) {
+        console.log('Step 4: Using localStorage locationId');
+        locationId = savedLocationId;
+      }
+      if (!token && savedToken) {
+        console.log('Step 4: Using localStorage token');
+        token = savedToken;
+        loadStatus();
+        return;
+      }
+
+      // STEP 5: Try referrer extraction
+      if (!locationId) {
+        locationId = tryExtractLocationId();
+        if (locationId) {
+          console.log('Step 5: Extracted from referrer');
+        }
+      }
+
+      // STEP 6: Try SSO postMessage with retry
+      if (!locationId) {
+        console.log('Step 6: Trying SSO postMessage...');
+        const ssoLocationId = await trySSOWithRetry(3, 2000);
+        if (ssoLocationId) {
+          console.log('Step 6: SSO returned locationId:', ssoLocationId);
+          locationId = ssoLocationId;
+        }
+      }
+
+      // STEP 7: If we have locationId, fetch token
+      if (locationId && !isTemplateVariable(locationId)) {
+        try {
+          console.log('Step 7: Fetching token for locationId:', locationId);
+          const res = await fetch(apiBase + '/api/embed/token-by-location/' + locationId);
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Location not found');
+          }
+          const data = await res.json();
+          token = data.token;
+
+          // Save for future
+          try {
+            localStorage.setItem('waghl_token', token);
+            localStorage.setItem('waghl_locationId', locationId);
+          } catch (e) { /* ignore */ }
+
+          if (data.subAccountName) {
+            document.getElementById('subAccountName').textContent = data.subAccountName;
+          }
+          loadStatus();
+          return;
+        } catch (err) {
+          console.log('Step 7: Token fetch failed:', err.message);
+          // Fall through to location picker
+        }
+      }
+
+      // STEP 8: Show location picker as final fallback
+      console.log('Step 8: Showing location picker');
+      const locations = await fetchLocations();
+      showLocationPicker(locations);
+    }
+
+    function showError(message, showConnectButton = true) {
+      document.getElementById('content').innerHTML = `
+        <div class="error-box">
+          <h1>Setup Required</h1>
+          <p>${message}</p>
+          ${showConnectButton ? `
+            <button class="btn btn-primary" style="margin-top: 20px;" onclick="openGhlOAuth()">
+              Connect GHL Location
+            </button>
+            <p style="margin-top: 12px; font-size: 12px; color: #6b7280;">
+              This will open GHL authorization in a new window
+            </p>
+          ` : `
+            <div class="info-box" style="margin-top: 16px;">
+              <p><strong>To fix this:</strong><br>
+              Please contact your administrator to configure this location.</p>
+            </div>
+          `}
+        </div>
+      `;
+    }
+
+    // Start initialization (unless we have an error)
+    if (!hasError) {
+      init();
+    }
+
+    async function loadStatus() {
+      try {
+        // Include locationId in query for security validation
+        const statusUrl = apiBase + '/api/embed/status/' + token + (locationId ? '?locationId=' + locationId : '');
+        const res = await fetch(statusUrl);
+        if (!res.ok) {
+          const errorData = await res.json().catch(() => ({}));
+          throw new Error(errorData.error || 'Invalid token');
+        }
+        const data = await res.json();
+        renderStatus(data);
+      } catch (err) {
+        document.getElementById('content').innerHTML = `
+          <div class="error-box">
+            <h1>Error</h1>
+            <p>${err.message || 'Failed to load status'}</p>
+          </div>
+        `;
+      }
+    }
+
+    function renderStatus(status) {
+      const isConnected = status.status === 'connected';
+      const hasQR = status.hasQR && status.qrCode;
+      const isConnecting = status.status === 'connecting' || status.status === 'qr_ready';
+
+      if (isConnected) {
+        document.getElementById('content').innerHTML = `
+          <div class="connected-info">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm-1.25 17.292l-4.5-4.364 1.857-1.858 2.643 2.506 5.643-5.784 1.857 1.858-7.5 7.642z"/>
+            </svg>
+            <span class="status-badge status-connected">
+              <span class="status-dot"></span>
+              Connected
+            </span>
+            <p class="phone-number">+${status.phoneNumber || 'Unknown'}</p>
+          </div>
+          <p style="color: #6b7280; margin-bottom: 16px;">
+            Your WhatsApp is connected and ready to send messages.
+          </p>
+          <button class="btn btn-danger" onclick="disconnect()">
+            Disconnect WhatsApp
+          </button>
+        `;
+      } else if (hasQR) {
+        // Use image endpoint instead of data URI (works better in iframes)
+        const qrImageUrl = apiBase + '/api/embed/qr-image/' + token + '?t=' + Date.now();
+        document.getElementById('content').innerHTML = `
+          <span class="status-badge status-connecting">
+            <span class="status-dot"></span>
+            Waiting for scan
+          </span>
+          <div class="qr-container">
+            <img src="${qrImageUrl}" alt="QR Code" class="qr-code" />
+            <p class="qr-instructions">
+              Open WhatsApp on your phone<br>
+              Go to <strong>Settings > Linked Devices > Link a Device</strong><br>
+              Scan this QR code
+            </p>
+          </div>
+          <button class="btn btn-secondary" onclick="location.reload()">
+            Refresh
+          </button>
+          <div class="info-box">
+            <p><strong>Note:</strong> QR code expires after 60 seconds. Click Refresh if it expires.</p>
+          </div>
+        `;
+        setTimeout(pollStatus, 3000);
+      } else if (isConnecting) {
+        document.getElementById('content').innerHTML = `
+          <span class="status-badge status-connecting">
+            <span class="status-dot"></span>
+            Connecting...
+          </span>
+          <div class="qr-container">
+            <div class="spinner" style="width: 48px; height: 48px; margin: 40px auto; border-width: 4px; color: #0f766e;"></div>
+            <p class="qr-instructions">Generating QR code...</p>
+          </div>
+        `;
+        setTimeout(pollStatus, 2000);
+      } else {
+        document.getElementById('content').innerHTML = `
+          <span class="status-badge status-disconnected">
+            <span class="status-dot"></span>
+            Disconnected
+          </span>
+          <p style="color: #6b7280; margin-bottom: 24px;">
+            Connect your WhatsApp to start sending messages through GoHighLevel.
+          </p>
+          <button id="connectBtn" class="btn btn-primary" onclick="connect()">
+            Connect WhatsApp
+          </button>
+          <div class="info-box">
+            <p><strong>How it works:</strong> After clicking connect, a QR code will appear. Scan it with your WhatsApp to link your account.</p>
+          </div>
+        `;
+      }
+    }
+
+    async function connect() {
+      const btn = document.getElementById('connectBtn');
+      btn.disabled = true;
+      btn.innerHTML = '<div class="spinner"></div> Connecting...';
+
+      try {
+        // Include locationId in body for security validation
+        const res = await fetch(apiBase + '/api/embed/connect/' + token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locationId: locationId })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          pollStatus();
+        } else {
+          alert(data.error || 'Failed to connect');
+          btn.disabled = false;
+          btn.innerHTML = 'Connect WhatsApp';
+        }
+      } catch (err) {
+        alert('Connection failed');
+        btn.disabled = false;
+        btn.innerHTML = 'Connect WhatsApp';
+      }
+    }
+
+    async function disconnect() {
+      if (!confirm('Are you sure you want to disconnect WhatsApp?')) return;
+
+      try {
+        // Include locationId in body for security validation
+        const res = await fetch(apiBase + '/api/embed/disconnect/' + token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ locationId: locationId })
+        });
+        if (res.ok) {
+          location.reload();
+        } else {
+          const data = await res.json().catch(() => ({}));
+          alert(data.error || 'Failed to disconnect');
+        }
+      } catch (err) {
+        alert('Disconnect failed');
+      }
+    }
+
+    async function pollStatus() {
+      try {
+        console.log('Polling status...');
+        // Include locationId in query for security validation
+        const statusUrl = apiBase + '/api/embed/status/' + token + (locationId ? '?locationId=' + locationId : '');
+        const res = await fetch(statusUrl);
+        const data = await res.json();
+        console.log('Status response:', data.status, 'hasQR:', data.hasQR, 'qrCode length:', data.qrCode ? data.qrCode.length : 0);
+
+        if (data.status === 'connected') {
+          console.log('Connected! Reloading...');
+          location.reload();
+        } else if (data.hasQR && data.qrCode) {
+          console.log('Got QR code, rendering...');
+          renderStatus(data);
+        } else {
+          console.log('No QR yet, polling again in 2s...');
+          setTimeout(pollStatus, 2000);
+        }
+      } catch (err) {
+        console.error('Poll error:', err);
+        setTimeout(pollStatus, 3000);
+      }
+    }
+  </script>
+</body>
+</html>
