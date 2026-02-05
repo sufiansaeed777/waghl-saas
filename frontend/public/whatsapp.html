@@ -1148,7 +1148,7 @@
           clearFromStorage(locationId);
           showSubscriptionError({
             errorCode: 'GHL_DISCONNECTED',
-            message: 'GoHighLevel has been disconnected successfully.'
+            message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.'
           });
         } else if (res.status === 401) {
           console.log('Token invalid on GHL disconnect, clearing cache...');
