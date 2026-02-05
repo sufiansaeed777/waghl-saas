@@ -8,6 +8,11 @@ const logger = require('../utils/logger');
 // Create checkout session for sub-account
 router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
   try {
+    // Check if Stripe is configured
+    if (!stripeService.isConfigured()) {
+      return res.status(503).json({ error: 'Billing is not configured' });
+    }
+
     const subAccountId = req.params.subAccountId;
 
     // Validate ownership - ensure sub-account belongs to this customer
@@ -17,6 +22,16 @@ router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
 
     if (!subAccount) {
       return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // Check if already paid - prevent duplicate subscriptions
+    if (subAccount.isPaid) {
+      return res.status(400).json({ error: 'This sub-account already has an active subscription' });
+    }
+
+    // Check if gifted - no payment needed
+    if (subAccount.isGifted) {
+      return res.status(400).json({ error: 'This sub-account is gifted and does not require payment' });
     }
 
     const session = await stripeService.createCheckoutSession(

@@ -300,123 +300,81 @@ class StripeService {
 
         case 'customer.subscription.updated': {
           const subscription = event.data.object;
-          const customer = await Customer.findOne({
-            where: { stripeCustomerId: subscription.customer }
-          });
+          const { subAccountId } = subscription.metadata || {};
 
-          if (customer) {
-            // Check if subscription is set to cancel at period end
-            const isCanceledAtPeriodEnd = subscription.cancel_at_period_end;
-
-            let status;
-            if (subscription.status === 'active') {
-              status = isCanceledAtPeriodEnd ? 'canceling' : 'active';
-            } else if (subscription.status === 'trialing') {
-              status = 'trialing';
-            } else if (subscription.status === 'past_due') {
-              status = 'past_due';
-            } else {
-              status = 'inactive';
-            }
-
-            // Get quantity from subscription
-            const quantity = subscription.items.data[0]?.quantity || 0;
-
-            const previousStatus = customer.subscriptionStatus;
-
-            await customer.update({
-              subscriptionStatus: status,
-              subscriptionQuantity: quantity,
-              subscriptionId: subscription.id,
-              planType: quantity >= 11 ? 'volume' : 'standard'
+          // Per-sub-account model: each subscription is tied to ONE sub-account
+          if (subAccountId) {
+            const subAccount = await SubAccount.findByPk(subAccountId, {
+              include: [{ model: Customer, as: 'customer' }]
             });
 
-            // If subscription was resumed (canceling -> active)
-            if (previousStatus === 'canceling' && status === 'active') {
-              logger.info(`Subscription resumed for customer ${customer.id}`);
-              // Reactivate all sub-accounts
-              await SubAccount.update(
-                { isPaid: true },
-                { where: { customerId: customer.id } }
-              );
-              // Send email notification with sub-account info
-              const subAccounts = await SubAccount.findAll({
-                where: { customerId: customer.id, isPaid: true },
-                attributes: ['name', 'ghlLocationId']
-              });
-              emailService.sendSubscriptionActivated(customer.email, customer.name, 'Resumed', subAccounts)
-                .catch(err => logger.error('Failed to send subscription resumed email:', err));
-            }
+            if (subAccount) {
+              const isCanceledAtPeriodEnd = subscription.cancel_at_period_end;
 
-            // If subscription was scheduled for cancellation
-            if (previousStatus === 'active' && status === 'canceling') {
-              logger.info(`Subscription scheduled for cancellation for customer ${customer.id}`);
-              // Send email about scheduled cancellation
-              emailService.sendSubscriptionCancelled(customer.email, customer.name)
-                .catch(err => logger.error('Failed to send subscription cancellation scheduled email:', err));
-            }
-
-            // If subscription went past_due, disable non-gifted sub-accounts
-            if (status === 'past_due' && previousStatus !== 'past_due') {
-              logger.info(`Subscription past_due for customer ${customer.id}, disabling sub-accounts`);
-              // Disable all non-gifted sub-accounts
-              await SubAccount.update(
-                { isPaid: false },
-                { where: { customerId: customer.id, isGifted: false } }
-              );
-              // Send email notification about payment issue
-              emailService.sendPaymentFailed(customer.email, customer.name)
-                .catch(err => logger.error('Failed to send payment failed email:', err));
-            }
-
-            // If subscription recovered from past_due to active, re-enable sub-accounts
-            if (previousStatus === 'past_due' && status === 'active') {
-              logger.info(`Subscription recovered from past_due for customer ${customer.id}`);
-              // Re-enable all non-gifted sub-accounts (up to their slot limit)
-              const subAccounts = await SubAccount.findAll({
-                where: { customerId: customer.id, isGifted: false },
-                order: [['createdAt', 'ASC']],
-                limit: quantity
-              });
-              for (const subAccount of subAccounts) {
+              // Handle subscription status changes for THIS sub-account only
+              if (subscription.status === 'past_due') {
+                // Payment failed - disable this sub-account
+                await subAccount.update({ isPaid: false });
+                logger.info(`Subscription past_due for sub-account ${subAccountId}`);
+                emailService.sendPaymentFailed(subAccount.customer.email, subAccount.customer.name)
+                  .catch(err => logger.error('Failed to send payment failed email:', err));
+              } else if (subscription.status === 'active' && !isCanceledAtPeriodEnd) {
+                // Active subscription - enable this sub-account
                 await subAccount.update({ isPaid: true });
+                logger.info(`Subscription active for sub-account ${subAccountId}`);
+              } else if (isCanceledAtPeriodEnd) {
+                // Scheduled for cancellation - sub-account still works until period end
+                logger.info(`Subscription scheduled for cancellation for sub-account ${subAccountId}`);
+                emailService.sendSubscriptionCancelled(subAccount.customer.email, subAccount.customer.name)
+                  .catch(err => logger.error('Failed to send cancellation email:', err));
               }
-              emailService.sendPaymentRecovered(customer.email, customer.name)
-                .catch(err => logger.error('Failed to send payment recovered email:', err));
-            }
 
-            logger.info(`Subscription updated for customer ${customer.id}: ${status}, quantity: ${quantity}, cancelAtPeriodEnd: ${isCanceledAtPeriodEnd}`);
+              logger.info(`Subscription updated for sub-account ${subAccountId}: ${subscription.status}, cancelAtPeriodEnd: ${isCanceledAtPeriodEnd}`);
+            }
+          } else {
+            // Legacy: subscription without subAccountId (old slot-based model)
+            const customer = await Customer.findOne({
+              where: { stripeCustomerId: subscription.customer }
+            });
+            if (customer) {
+              logger.info(`Legacy subscription update for customer ${customer.id}: ${subscription.status}`);
+            }
           }
           break;
         }
 
         case 'customer.subscription.deleted': {
           const subscription = event.data.object;
-          const customer = await Customer.findOne({
-            where: { stripeCustomerId: subscription.customer }
-          });
+          const { subAccountId } = subscription.metadata || {};
 
-          if (customer) {
-            await customer.update({
-              subscriptionStatus: 'canceled',
-              subscriptionId: null,
-              subscriptionQuantity: 0,
-              planType: null
+          // Per-sub-account model: only deactivate the specific sub-account
+          if (subAccountId) {
+            const subAccount = await SubAccount.findByPk(subAccountId, {
+              include: [{ model: Customer, as: 'customer' }]
             });
 
-            // Deactivate all sub-accounts (except gifted ones)
-            await SubAccount.update(
-              { isPaid: false },
-              { where: { customerId: customer.id, isGifted: false } }
-            );
+            if (subAccount) {
+              await subAccount.update({ isPaid: false });
+              logger.info(`Subscription deleted for sub-account ${subAccountId}, marked as unpaid`);
 
-            // Send subscription cancelled email (only if not already sent during 'canceling' status)
-            if (customer.subscriptionStatus !== 'canceling') {
-              emailService.sendSubscriptionCancelled(customer.email, customer.name)
+              // Send cancellation email
+              emailService.sendSubscriptionCancelled(subAccount.customer.email, subAccount.customer.name)
                 .catch(err => logger.error('Failed to send subscription cancelled email:', err));
             }
+          } else {
+            // Legacy: subscription without subAccountId
+            const customer = await Customer.findOne({
+              where: { stripeCustomerId: subscription.customer }
+            });
 
-            logger.info(`Subscription deleted for customer ${customer.id}, quantity reset to 0`);
+            if (customer) {
+              // Legacy behavior: deactivate all sub-accounts
+              await SubAccount.update(
+                { isPaid: false },
+                { where: { customerId: customer.id, isGifted: false } }
+              );
+              logger.info(`Legacy subscription deleted for customer ${customer.id}`);
+            }
           }
           break;
         }
