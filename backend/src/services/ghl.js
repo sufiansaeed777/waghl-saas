@@ -775,6 +775,39 @@ class GHLService {
         stack: error.stack,
         subAccountId: subAccount.id
       });
+
+      // Check if error indicates contact/conversation not found - clear stale mapping
+      const errorMsg = error.message?.toLowerCase() || '';
+      const errorStatus = error.response?.status;
+      const isNotFoundError = errorStatus === 404 ||
+        errorMsg.includes('not found') ||
+        errorMsg.includes('does not exist') ||
+        errorMsg.includes('invalid contact') ||
+        errorMsg.includes('contact deleted');
+
+      if (isNotFoundError && isLID) {
+        // Clear the stale mapping so it can be recreated on next message
+        const { WhatsAppMapping } = require('../models');
+        const externalPhone = direction === 'inbound' ? fromNumber : toNumber;
+        try {
+          const deleted = await WhatsAppMapping.destroy({
+            where: {
+              subAccountId: subAccount.id,
+              whatsappId: externalPhone  // The LID
+            }
+          });
+          if (deleted > 0) {
+            logger.info('Cleared stale WhatsAppMapping after GHL not found error:', {
+              subAccountId: subAccount.id,
+              whatsappId: externalPhone,
+              deleted
+            });
+          }
+        } catch (mappingErr) {
+          logger.warn('Failed to clear stale mapping:', mappingErr.message);
+        }
+      }
+
       return null;
     }
   }

@@ -741,6 +741,83 @@ router.get('/queue/status/:subAccountId', authenticateJWT, async (req, res) => {
   }
 });
 
+// Clear WhatsApp mapping for a phone number (use when contact deleted in GHL)
+router.delete('/mapping/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    const { subAccountId } = req.params;
+    const { phoneNumber } = req.query;
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    let deleted = 0;
+    if (phoneNumber) {
+      // Clear specific phone mapping
+      const cleanPhone = phoneNumber.replace(/[^\d]/g, '');
+      deleted = await WhatsAppMapping.destroy({
+        where: { subAccountId, phoneNumber: cleanPhone }
+      });
+      logger.info(`Cleared WhatsAppMapping for phone ${cleanPhone} in sub-account ${subAccountId}`);
+    } else {
+      // Clear all mappings for this sub-account
+      deleted = await WhatsAppMapping.destroy({
+        where: { subAccountId }
+      });
+      logger.info(`Cleared all WhatsAppMappings for sub-account ${subAccountId}: ${deleted} entries`);
+    }
+
+    res.json({
+      success: true,
+      message: `Cleared ${deleted} mapping(s)`,
+      deleted
+    });
+  } catch (error) {
+    logger.error('Clear mapping error:', error);
+    res.status(500).json({ error: 'Failed to clear mapping' });
+  }
+});
+
+// Get WhatsApp mappings for a sub-account
+router.get('/mappings/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    const { subAccountId } = req.params;
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    const mappings = await WhatsAppMapping.findAll({
+      where: { subAccountId },
+      order: [['updatedAt', 'DESC']],
+      limit: 100
+    });
+
+    res.json({
+      success: true,
+      count: mappings.length,
+      mappings: mappings.map(m => ({
+        id: m.id,
+        phoneNumber: m.phoneNumber,
+        whatsappId: m.whatsappId,
+        contactName: m.contactName,
+        updatedAt: m.updatedAt
+      }))
+    });
+  } catch (error) {
+    logger.error('Get mappings error:', error);
+    res.status(500).json({ error: 'Failed to get mappings' });
+  }
+});
+
 // Set rate limit for a sub-account
 router.post('/queue/rate-limit/:subAccountId', authenticateJWT, async (req, res) => {
   try {
