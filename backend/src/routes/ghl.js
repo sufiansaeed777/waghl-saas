@@ -405,6 +405,7 @@ router.get('/status/:subAccountId', authenticateJWT, async (req, res) => {
 });
 
 // Disconnect GHL from sub-account (keeps locationId for reconnection)
+// Also disconnects WhatsApp since GHL is required for embed page access
 router.post('/disconnect/:subAccountId', authenticateJWT, async (req, res) => {
   try {
     const { subAccountId } = req.params;
@@ -417,6 +418,15 @@ router.post('/disconnect/:subAccountId', authenticateJWT, async (req, res) => {
       return res.status(404).json({ error: 'Sub-account not found' });
     }
 
+    // Disconnect WhatsApp first (since GHL is required for embed access)
+    try {
+      await whatsappService.disconnect(subAccountId);
+      logger.info(`WhatsApp disconnected for sub-account ${subAccountId} due to GHL disconnect`);
+    } catch (waError) {
+      logger.warn(`Failed to disconnect WhatsApp for sub-account ${subAccountId}:`, waError.message);
+      // Continue with GHL disconnect even if WhatsApp disconnect fails
+    }
+
     await subAccount.update({
       ghlAccessToken: null,
       ghlRefreshToken: null,
@@ -424,7 +434,7 @@ router.post('/disconnect/:subAccountId', authenticateJWT, async (req, res) => {
       ghlConnected: false
     });
 
-    res.json({ success: true, message: 'GHL disconnected' });
+    res.json({ success: true, message: 'GHL and WhatsApp disconnected' });
   } catch (error) {
     logger.error('GHL disconnect error:', error);
     res.status(500).json({ error: 'Failed to disconnect GHL' });
@@ -432,6 +442,7 @@ router.post('/disconnect/:subAccountId', authenticateJWT, async (req, res) => {
 });
 
 // Full uninstall - clears ALL GHL data including locationId
+// Also disconnects WhatsApp since GHL is required for embed page access
 router.post('/uninstall/:subAccountId', authenticateJWT, async (req, res) => {
   try {
     const { subAccountId } = req.params;
@@ -446,6 +457,15 @@ router.post('/uninstall/:subAccountId', authenticateJWT, async (req, res) => {
 
     const oldLocationId = subAccount.ghlLocationId;
 
+    // Disconnect WhatsApp first (since GHL is required for embed access)
+    try {
+      await whatsappService.disconnect(subAccountId);
+      logger.info(`WhatsApp disconnected for sub-account ${subAccountId} due to GHL uninstall`);
+    } catch (waError) {
+      logger.warn(`Failed to disconnect WhatsApp for sub-account ${subAccountId}:`, waError.message);
+      // Continue with GHL uninstall even if WhatsApp disconnect fails
+    }
+
     // Clear ALL GHL data
     await subAccount.update({
       ghlAccessToken: null,
@@ -459,7 +479,7 @@ router.post('/uninstall/:subAccountId', authenticateJWT, async (req, res) => {
 
     res.json({
       success: true,
-      message: 'GHL fully uninstalled - locationId cleared',
+      message: 'GHL and WhatsApp fully uninstalled - locationId cleared',
       previousLocationId: oldLocationId
     });
   } catch (error) {

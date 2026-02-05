@@ -742,8 +742,8 @@
         if (!res.ok) {
           const data = await res.json().catch(() => ({}));
 
-          // Handle subscription/payment errors (402)
-          if (res.status === 402) {
+          // Handle subscription/payment errors (402) or GHL disconnected (403)
+          if (res.status === 402 || (res.status === 403 && data.errorCode === 'GHL_DISCONNECTED')) {
             showSubscriptionError(data);
             return;
           }
@@ -916,8 +916,8 @@
             return;
           }
 
-          // Handle subscription/payment errors (402)
-          if (res.status === 402) {
+          // Handle subscription/payment errors (402) or GHL disconnected (403)
+          if (res.status === 402 || (res.status === 403 && errorData.errorCode === 'GHL_DISCONNECTED')) {
             showSubscriptionError(errorData);
             return;
           }
@@ -943,6 +943,7 @@
       let title = 'Subscription Required';
       let message = errorData.message || 'An active subscription is required to use this feature.';
       let icon = '💳';
+      let actionText = 'Please contact your administrator or visit your account settings to subscribe.';
 
       if (errorCode === 'TRIAL_EXPIRED') {
         title = 'Free Trial Ended';
@@ -956,6 +957,10 @@
       } else if (errorCode === 'ACCOUNT_INACTIVE') {
         title = 'Account Inactive';
         icon = '🚫';
+      } else if (errorCode === 'GHL_DISCONNECTED') {
+        title = 'GHL Connection Lost';
+        icon = '🔗';
+        actionText = 'The GoHighLevel integration has been disconnected. Please ask your administrator to reconnect GHL from the GHLWA Connector admin panel.';
       }
 
       document.getElementById('content').innerHTML = `
@@ -966,7 +971,7 @@
           <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; text-align: left;">
             <p style="color: #991b1b; font-size: 14px; margin: 0;">
               <strong>What to do:</strong><br>
-              Please contact your administrator or visit your account settings to subscribe.
+              ${actionText}
             </p>
           </div>
         </div>

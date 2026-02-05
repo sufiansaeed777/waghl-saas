@@ -201,7 +201,7 @@
       </svg>
     </div>
     <h1>WhatsApp Connection</h1>
-    <p class="subtitle" id="subAccountName">Loading...</p>
+    <p class="subtitle" id="subAccountName"></p>
     <div id="content">
       <div class="loading">
         <div class="spinner"></div>
@@ -249,6 +249,10 @@
     console.log('URL Params:', { token: !!token, locationId, ssoKey: !!ssoKey, error: errorParam, hash: window.location.hash });
     console.log('Referrer:', document.referrer);
     console.log('Full URL:', window.location.href);
+
+    // Prevent multiple initializations and flashing
+    let isInitialized = false;
+    let isPolling = false;
 
     // Modal functions
     function showModal(modalId) {
@@ -379,41 +383,48 @@
       }
     }
 
-    // Try localStorage for saved token (from OAuth or setup page)
+    // Helper: Get namespaced localStorage key (prevents cross-location token sharing)
+    function getStorageKey(key, locId) {
+      return locId ? `waghl_${key}_${locId}` : null;
+    }
+
+    // Helper: Save to localStorage with location namespace
+    function saveToStorage(key, value, locId) {
+      if (!locId || isTemplateVariable(locId)) return;
+      try {
+        localStorage.setItem(getStorageKey(key, locId), value);
+        console.log(`Saved ${key} to localStorage for location:`, locId);
+      } catch (e) { /* ignore */ }
+    }
+
+    // Helper: Load from localStorage with location namespace
+    function loadFromStorage(key, locId) {
+      if (!locId || isTemplateVariable(locId)) return null;
+      try {
+        return localStorage.getItem(getStorageKey(key, locId));
+      } catch (e) { return null; }
+    }
+
+    // Helper: Clear from localStorage with location namespace
+    function clearFromStorage(locId) {
+      if (!locId || isTemplateVariable(locId)) return;
+      try {
+        localStorage.removeItem(getStorageKey('token', locId));
+        console.log('Cleared token from localStorage for location:', locId);
+      } catch (e) { /* ignore */ }
+    }
+
+    // Try localStorage for saved token - ONLY if we have a valid locationId
+    // This prevents cross-location token sharing
     let savedToken = null;
-    let savedLocationId = null;
-    try {
-      savedToken = localStorage.getItem('waghl_token');
-      savedLocationId = localStorage.getItem('waghl_locationId');
-      if (savedToken) console.log('Found saved token in localStorage');
-      if (savedLocationId) console.log('Found saved locationId in localStorage:', savedLocationId);
-    } catch (e) {
-      console.log('localStorage not available (likely iframe restriction):', e.message);
-    }
-
-    // Save token to localStorage if we have one in URL
-    if (token) {
-      try {
-        localStorage.setItem('waghl_token', token);
-        console.log('Saved token to localStorage');
-      } catch (e) { /* ignore */ }
-    }
+    // Load saved token for this location (will be used as fallback in init())
     if (locationId && !isTemplateVariable(locationId)) {
-      try {
-        localStorage.setItem('waghl_locationId', locationId);
-        console.log('Saved locationId to localStorage');
-      } catch (e) { /* ignore */ }
+      savedToken = loadFromStorage('token', locationId);
+      if (savedToken) console.log('Found saved token in localStorage for location:', locationId);
     }
 
-    // Use saved values if not in URL
-    if (!token && savedToken) {
-      token = savedToken;
-      console.log('Using token from localStorage');
-    }
-    if (!locationId && savedLocationId && !isTemplateVariable(savedLocationId)) {
-      locationId = savedLocationId;
-      console.log('Using locationId from localStorage');
-    }
+    // NOTE: Don't save or use tokens here - init() will fetch fresh token based on locationId
+    // This prevents cross-location token contamination
 
     // Handle error from redirect
     let hasError = false;
@@ -535,7 +546,7 @@
           const newLocationId = data.locationId || data.location_id || data.activeLocation ||
                                (data.location && data.location.id) ||
                                (data.data && data.data.locationId);
-          if (newLocationId && !isTemplateVariable(newLocationId)) {
+          if (newLocationId && !isTemplateVariable(newLocationId) && !isInitialized) {
             console.log('Got locationId from postMessage:', newLocationId);
             locationId = newLocationId;
             init();
@@ -717,11 +728,6 @@
       console.log('Selected location:', locId);
       locationId = locId;
 
-      // Save to localStorage for future visits
-      try {
-        localStorage.setItem('waghl_locationId', locId);
-      } catch (e) { /* ignore */ }
-
       // Show loading
       document.getElementById('content').innerHTML = `
         <div class="loading">
@@ -734,16 +740,21 @@
       try {
         const res = await fetch(apiBase + '/api/embed/token-by-location/' + locId);
         if (!res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
+
+          // Handle subscription/payment errors (402) or GHL disconnected (403)
+          if (res.status === 402 || (res.status === 403 && data.errorCode === 'GHL_DISCONNECTED')) {
+            showSubscriptionError(data);
+            return;
+          }
+
           throw new Error(data.error || 'Location not found');
         }
         const data = await res.json();
         token = data.token;
 
-        // Save token too
-        try {
-          localStorage.setItem('waghl_token', token);
-        } catch (e) { /* ignore */ }
+        // Save token namespaced by locationId
+        saveToStorage('token', token, locId);
 
         if (data.subAccountName) {
           document.getElementById('subAccountName').textContent = data.subAccountName;
@@ -755,69 +766,52 @@
     }
 
     // Main initialization with complete fallback chain
+    // PRIORITY: Always use locationId to fetch correct token (prevents cross-location contamination)
     async function init() {
+      // Prevent multiple initializations
+      if (isInitialized) {
+        console.log('Already initialized, skipping');
+        return;
+      }
+      isInitialized = true;
       console.log('=== Starting initialization ===');
+      console.log('Initial state - token:', !!token, 'locationId:', locationId);
 
-      // STEP 1: Already have token? Use it directly
-      if (token) {
-        console.log('Step 1: Using provided token');
-        loadStatus();
-        return;
-      }
+      // STEP 1: Try to get locationId from all sources first
+      // This ensures we always fetch the correct token for the current GHL location
 
-      // STEP 2: Try SSO key if provided
-      if (ssoKey && await trySSO()) {
-        console.log('Step 2: SSO key worked');
-        loadStatus();
-        return;
-      }
-
-      // STEP 3: Try cookie-based auth
-      if (!locationId) {
-        const cookieAuth = getGhlAuthCookie();
-        if (cookieAuth && cookieAuth.token) {
-          console.log('Step 3: Using cookie auth');
-          token = cookieAuth.token;
-          locationId = cookieAuth.locationId;
-          loadStatus();
-          return;
-        }
-      }
-
-      // STEP 4: Try localStorage
-      if (!locationId && savedLocationId && !isTemplateVariable(savedLocationId)) {
-        console.log('Step 4: Using localStorage locationId');
-        locationId = savedLocationId;
-      }
-      if (!token && savedToken) {
-        console.log('Step 4: Using localStorage token');
-        token = savedToken;
-        loadStatus();
-        return;
-      }
-
-      // STEP 5: Try referrer extraction
+      // 1a: Try referrer extraction if no locationId
       if (!locationId) {
         locationId = tryExtractLocationId();
         if (locationId) {
-          console.log('Step 5: Extracted from referrer');
+          console.log('Step 1a: Extracted locationId from referrer:', locationId);
         }
       }
 
-      // STEP 6: Try SSO postMessage with retry
+      // 1b: Try SSO postMessage if still no locationId
       if (!locationId) {
-        console.log('Step 6: Trying SSO postMessage...');
+        console.log('Step 1b: Trying SSO postMessage...');
         const ssoLocationId = await trySSOWithRetry(3, 2000);
         if (ssoLocationId) {
-          console.log('Step 6: SSO returned locationId:', ssoLocationId);
+          console.log('Step 1b: SSO returned locationId:', ssoLocationId);
           locationId = ssoLocationId;
         }
       }
 
-      // STEP 7: If we have locationId, fetch token
+      // 1c: Try cookie for locationId (only use if we don't have one yet)
+      if (!locationId) {
+        const cookieAuth = getGhlAuthCookie();
+        if (cookieAuth && cookieAuth.locationId) {
+          console.log('Step 1c: Got locationId from cookie:', cookieAuth.locationId);
+          locationId = cookieAuth.locationId;
+        }
+      }
+
+      // STEP 2: If we have a valid locationId, ALWAYS fetch fresh token
+      // This prevents using stale/wrong tokens from other locations
       if (locationId && !isTemplateVariable(locationId)) {
         try {
-          console.log('Step 7: Fetching token for locationId:', locationId);
+          console.log('Step 2: Fetching fresh token for locationId:', locationId);
           const res = await fetch(apiBase + '/api/embed/token-by-location/' + locationId);
           if (!res.ok) {
             const data = await res.json();
@@ -826,11 +820,8 @@
           const data = await res.json();
           token = data.token;
 
-          // Save for future
-          try {
-            localStorage.setItem('waghl_token', token);
-            localStorage.setItem('waghl_locationId', locationId);
-          } catch (e) { /* ignore */ }
+          // Save token namespaced by locationId
+          saveToStorage('token', token, locationId);
 
           if (data.subAccountName) {
             document.getElementById('subAccountName').textContent = data.subAccountName;
@@ -838,13 +829,36 @@
           loadStatus();
           return;
         } catch (err) {
-          console.log('Step 7: Token fetch failed:', err.message);
-          // Fall through to location picker
+          console.log('Step 2: Token fetch failed:', err.message);
+          // Fall through to other methods
         }
       }
 
-      // STEP 8: Show location picker as final fallback
-      console.log('Step 8: Showing location picker');
+      // STEP 3: No locationId available - try token directly (from URL param)
+      // This is for direct links with ?token=xxx
+      if (token) {
+        console.log('Step 3: Using token from URL (no locationId available)');
+        loadStatus();
+        return;
+      }
+
+      // STEP 4: Try SSO key exchange
+      if (ssoKey && await trySSO()) {
+        console.log('Step 4: SSO key worked');
+        loadStatus();
+        return;
+      }
+
+      // STEP 5: Try localStorage token (only if we have matching locationId cached)
+      if (savedToken && locationId) {
+        console.log('Step 5: Using localStorage token for location:', locationId);
+        token = savedToken;
+        loadStatus();
+        return;
+      }
+
+      // STEP 6: Show location picker as final fallback
+      console.log('Step 6: Showing location picker');
       const locations = await fetchLocations();
       showLocationPicker(locations);
     }
@@ -878,15 +892,41 @@
 
     async function loadStatus() {
       try {
-        // Include locationId in query for security validation
-        const statusUrl = apiBase + '/api/embed/status/' + token + (locationId ? '?locationId=' + locationId : '');
+        // Don't pass locationId - token is sufficient for authentication
+        // Passing locationId from referrer can cause false "mismatch" errors
+        const statusUrl = apiBase + '/api/embed/status/' + token;
         const res = await fetch(statusUrl);
         if (!res.ok) {
           const errorData = await res.json().catch(() => ({}));
+
+          // If token is invalid (401), clear cache and retry with fresh token
+          if (res.status === 401) {
+            console.log('Token invalid, clearing cache and retrying...');
+            clearFromStorage(locationId);
+            token = null;
+            isInitialized = false;
+
+            // If we have locationId, fetch fresh token
+            if (locationId && !isTemplateVariable(locationId)) {
+              await selectLocation(locationId);
+              return;
+            }
+            // Otherwise re-initialize
+            init();
+            return;
+          }
+
+          // Handle subscription/payment errors (402) or GHL disconnected (403)
+          if (res.status === 402 || (res.status === 403 && errorData.errorCode === 'GHL_DISCONNECTED')) {
+            showSubscriptionError(errorData);
+            return;
+          }
+
           throw new Error(errorData.error || 'Invalid token');
         }
         const data = await res.json();
         renderStatus(data);
+        lastStatus = data; // Set lastStatus to prevent first poll from re-rendering
       } catch (err) {
         document.getElementById('content').innerHTML = `
           <div class="error-box">
@@ -895,6 +935,47 @@
           </div>
         `;
       }
+    }
+
+    // Show subscription/payment error with appropriate message
+    function showSubscriptionError(errorData) {
+      const errorCode = errorData.errorCode || 'UNKNOWN';
+      let title = 'Subscription Required';
+      let message = errorData.message || 'An active subscription is required to use this feature.';
+      let icon = '💳';
+      let actionText = 'Please contact your administrator or visit your account settings to subscribe.';
+
+      if (errorCode === 'TRIAL_EXPIRED') {
+        title = 'Free Trial Ended';
+        icon = '⏰';
+      } else if (errorCode === 'NO_SUBSCRIPTION') {
+        title = 'Subscription Required';
+        icon = '💳';
+      } else if (errorCode === 'SUBACCOUNT_NOT_PAID') {
+        title = 'Payment Required';
+        icon = '💳';
+      } else if (errorCode === 'ACCOUNT_INACTIVE') {
+        title = 'Account Inactive';
+        icon = '🚫';
+      } else if (errorCode === 'GHL_DISCONNECTED') {
+        title = 'GHL Connection Lost';
+        icon = '🔗';
+        actionText = 'The GoHighLevel integration has been disconnected. Please ask your administrator to reconnect GHL from the GHLWA Connector admin panel.';
+      }
+
+      document.getElementById('content').innerHTML = `
+        <div style="text-align: center; padding: 20px;">
+          <div style="font-size: 48px; margin-bottom: 20px;">${icon}</div>
+          <h2 style="color: #ef4444; margin-bottom: 12px;">${title}</h2>
+          <p style="color: #6b7280; margin-bottom: 24px;">${message}</p>
+          <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; text-align: left;">
+            <p style="color: #991b1b; font-size: 14px; margin: 0;">
+              <strong>What to do:</strong><br>
+              ${actionText}
+            </p>
+          </div>
+        </div>
+      `;
     }
 
     function renderStatus(status) {
@@ -982,15 +1063,16 @@
       btn.innerHTML = '<div class="spinner"></div> Connecting...';
 
       try {
-        // Include locationId in body for security validation
+        // Token is sufficient authentication - don't pass locationId
         const res = await fetch(apiBase + '/api/embed/connect/' + token, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ locationId: locationId })
+          body: JSON.stringify({})
         });
         const data = await res.json();
 
         if (res.ok) {
+          isPolling = false; // Reset polling flag
           pollStatus();
         } else {
           alert(data.error || 'Failed to connect');
@@ -1008,14 +1090,27 @@
       if (!confirm('Are you sure you want to disconnect WhatsApp?')) return;
 
       try {
-        // Include locationId in body for security validation
+        // Token is sufficient authentication
         const res = await fetch(apiBase + '/api/embed/disconnect/' + token, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ locationId: locationId })
+          body: JSON.stringify({})
         });
         if (res.ok) {
-          location.reload();
+          // Re-render status without page reload (prevents flashing)
+          loadStatus();
+        } else if (res.status === 401) {
+          // Token invalid (sub-account deleted) - clear cache and re-initialize
+          console.log('Token invalid on disconnect, clearing cache...');
+          clearFromStorage(locationId);
+          token = null;
+          isInitialized = false;
+          // Re-initialize to show fresh state
+          if (locationId && !isTemplateVariable(locationId)) {
+            await selectLocation(locationId);
+          } else {
+            init();
+          }
         } else {
           const data = await res.json().catch(() => ({}));
           alert(data.error || 'Failed to disconnect');
@@ -1025,27 +1120,63 @@
       }
     }
 
+    let lastStatus = null; // Track last status to avoid unnecessary re-renders
+
     async function pollStatus() {
+      // Prevent concurrent polling
+      if (isPolling) {
+        console.log('Already polling, skipping');
+        return;
+      }
+      isPolling = true;
+
       try {
         console.log('Polling status...');
-        // Include locationId in query for security validation
-        const statusUrl = apiBase + '/api/embed/status/' + token + (locationId ? '?locationId=' + locationId : '');
+        // Don't pass locationId - token is sufficient
+        const statusUrl = apiBase + '/api/embed/status/' + token;
         const res = await fetch(statusUrl);
-        const data = await res.json();
-        console.log('Status response:', data.status, 'hasQR:', data.hasQR, 'qrCode length:', data.qrCode ? data.qrCode.length : 0);
 
-        if (data.status === 'connected') {
-          console.log('Connected! Reloading...');
-          location.reload();
-        } else if (data.hasQR && data.qrCode) {
-          console.log('Got QR code, rendering...');
+        // Handle 401 - token invalid (sub-account deleted)
+        if (res.status === 401) {
+          console.log('Token invalid during polling, clearing cache...');
+          isPolling = false;
+          clearFromStorage(locationId);
+          token = null;
+          isInitialized = false;
+          if (locationId && !isTemplateVariable(locationId)) {
+            await selectLocation(locationId);
+          } else {
+            init();
+          }
+          return;
+        }
+
+        const data = await res.json();
+        console.log('Status response:', data.status, 'hasQR:', data.hasQR, 'qrTimestamp:', data.qrTimestamp);
+
+        // Only re-render if status actually changed (including QR refresh via timestamp)
+        const statusChanged = !lastStatus ||
+          lastStatus.status !== data.status ||
+          lastStatus.hasQR !== data.hasQR ||
+          lastStatus.qrTimestamp !== data.qrTimestamp ||  // Detect QR code refresh
+          (data.status === 'connected' && lastStatus.status !== 'connected');
+
+        if (statusChanged) {
           renderStatus(data);
+          lastStatus = data;
+        }
+
+        // Continue polling if not connected
+        if (data.status !== 'connected') {
+          isPolling = false;
+          setTimeout(pollStatus, data.hasQR ? 3000 : 2000);
         } else {
-          console.log('No QR yet, polling again in 2s...');
-          setTimeout(pollStatus, 2000);
+          console.log('Connected!');
+          isPolling = false;
         }
       } catch (err) {
         console.error('Poll error:', err);
+        isPolling = false;
         setTimeout(pollStatus, 3000);
       }
     }

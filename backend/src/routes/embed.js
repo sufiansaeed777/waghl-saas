@@ -509,6 +509,15 @@ router.get('/status/:token', async (req, res) => {
       }
     }
 
+    // Check if GHL is connected - if not, WhatsApp should not be accessible via embed
+    if (!subAccount.ghlConnected) {
+      return res.status(403).json({
+        error: 'GHL disconnected',
+        message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.',
+        errorCode: 'GHL_DISCONNECTED'
+      });
+    }
+
     const status = await whatsappService.getStatus(subAccountId);
     res.json(status);
   } catch (error) {
@@ -539,6 +548,15 @@ router.post('/connect/:token', async (req, res) => {
       logger.warn(`Attempted to connect sub-account ${subAccountId} without ghlLocationId`);
       return res.status(403).json({
         error: 'This sub-account is not linked to a GHL location. Please connect via GHL Marketplace first.'
+      });
+    }
+
+    // SECURITY: GHL must be connected to allow WhatsApp connection via embed
+    if (!subAccount.ghlConnected) {
+      logger.warn(`Attempted to connect WhatsApp for sub-account ${subAccountId} with GHL disconnected`);
+      return res.status(403).json({
+        error: 'GoHighLevel connection is not active. Please reconnect GHL from the admin panel.',
+        errorCode: 'GHL_DISCONNECTED'
       });
     }
 
