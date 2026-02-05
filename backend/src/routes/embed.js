@@ -113,7 +113,7 @@ router.get('/token-by-location/:locationId', async (req, res) => {
                           customer.trialEndsAt &&
                           new Date(customer.trialEndsAt) > new Date();
 
-    if (!isActiveTrial && !subAccount.isPaid && customer.role !== 'admin' && !customer.hasUnlimitedAccess) {
+    if (!isActiveTrial && !subAccount.isPaid && !subAccount.isGifted && customer.role !== 'admin' && !customer.hasUnlimitedAccess) {
       logger.warn('Sub-account not paid for embed access', { locationId, subAccountId: subAccount.id });
       return res.status(402).json({
         error: 'Payment required',
@@ -518,7 +518,7 @@ router.get('/status/:token', async (req, res) => {
                             customer.trialEndsAt &&
                             new Date(customer.trialEndsAt) > new Date();
 
-      if (!isActiveTrial && !subAccount.isPaid) {
+      if (!isActiveTrial && !subAccount.isPaid && !subAccount.isGifted) {
         return res.status(402).json({
           error: 'Payment required',
           message: 'This sub-account requires an active subscription. Please subscribe to activate it.',
@@ -594,7 +594,7 @@ router.post('/connect/:token', async (req, res) => {
                           new Date(customer.trialEndsAt) > new Date();
     const isAdminOrUnlimited = customer && (customer.role === 'admin' || customer.hasUnlimitedAccess);
 
-    if (!isActiveTrial && !isAdminOrUnlimited && !subAccount.isPaid) {
+    if (!isActiveTrial && !isAdminOrUnlimited && !subAccount.isPaid && !subAccount.isGifted) {
       return res.status(402).json({ error: 'Payment required to connect WhatsApp. Please subscribe to activate this sub-account.' });
     }
 
