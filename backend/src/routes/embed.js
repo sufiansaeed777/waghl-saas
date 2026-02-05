@@ -118,6 +118,16 @@ router.get('/token-by-location/:locationId', async (req, res) => {
       });
     }
 
+    // Check if GHL is connected
+    if (!subAccount.ghlConnected) {
+      logger.warn('GHL not connected for embed access', { locationId, subAccountId: subAccount.id });
+      return res.status(403).json({
+        error: 'GHL disconnected',
+        message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.',
+        errorCode: 'GHL_DISCONNECTED'
+      });
+    }
+
     // Generate token
     const token = generateToken(subAccount.id);
     tokenCache.set(token, subAccount.id);
