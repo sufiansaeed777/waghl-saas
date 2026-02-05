@@ -608,6 +608,50 @@ router.post('/disconnect/:token', async (req, res) => {
   }
 });
 
+// Disconnect GHL OAuth (for embed page)
+// This disconnects GHL integration and WhatsApp, but doesn't uninstall from marketplace
+router.post('/disconnect-ghl/:token', async (req, res) => {
+  try {
+    const { token } = req.params;
+
+    const subAccountId = await verifyTokenWithFallback(token);
+    if (!subAccountId) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+
+    const subAccount = await SubAccount.findByPk(subAccountId);
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // Disconnect WhatsApp first
+    try {
+      await whatsappService.disconnect(subAccountId);
+      logger.info(`WhatsApp disconnected for sub-account ${subAccountId} due to GHL disconnect`);
+    } catch (waError) {
+      logger.warn(`Failed to disconnect WhatsApp for sub-account ${subAccountId}:`, waError.message);
+    }
+
+    // Clear GHL tokens
+    await subAccount.update({
+      ghlAccessToken: null,
+      ghlRefreshToken: null,
+      ghlTokenExpiresAt: null,
+      ghlConnected: false
+    });
+
+    logger.info(`GHL disconnected for sub-account ${subAccountId} via embed`);
+
+    res.json({
+      success: true,
+      message: 'GHL disconnected successfully'
+    });
+  } catch (error) {
+    logger.error('Embed GHL disconnect error:', error);
+    res.status(500).json({ error: 'Failed to disconnect GHL' });
+  }
+});
+
 // Uninstall GHL app (for embed page - calls GHL API to remove app)
 // SECURITY: Validates locationId
 const ghlService = require('../services/ghl');

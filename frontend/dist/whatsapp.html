@@ -1001,6 +1001,9 @@
           <button class="btn btn-danger" onclick="disconnect()">
             Disconnect WhatsApp
           </button>
+          <button class="btn btn-secondary" style="margin-top: 12px;" onclick="disconnectGhl()">
+            Disconnect GHL
+          </button>
         `;
       } else if (hasQR) {
         // Use image endpoint instead of data URI (works better in iframes)
@@ -1117,6 +1120,41 @@
         }
       } catch (err) {
         alert('Disconnect failed');
+      }
+    }
+
+    async function disconnectGhl() {
+      if (!confirm('Are you sure you want to disconnect GoHighLevel? This will also disconnect WhatsApp.')) return;
+
+      try {
+        const res = await fetch(apiBase + '/api/embed/disconnect-ghl/' + token, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        if (res.ok) {
+          // Clear local storage and show GHL disconnected message
+          clearFromStorage(locationId);
+          showSubscriptionError({
+            errorCode: 'GHL_DISCONNECTED',
+            message: 'GoHighLevel has been disconnected successfully.'
+          });
+        } else if (res.status === 401) {
+          console.log('Token invalid on GHL disconnect, clearing cache...');
+          clearFromStorage(locationId);
+          token = null;
+          isInitialized = false;
+          if (locationId && !isTemplateVariable(locationId)) {
+            await selectLocation(locationId);
+          } else {
+            init();
+          }
+        } else {
+          const data = await res.json().catch(() => ({}));
+          alert(data.error || 'Failed to disconnect GHL');
+        }
+      } catch (err) {
+        alert('GHL disconnect failed');
       }
     }
 
