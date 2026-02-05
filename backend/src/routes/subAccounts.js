@@ -22,6 +22,7 @@ router.get('/', authenticateJWT, async (req, res) => {
 });
 
 // Create new sub-account
+// Users can create unlimited sub-accounts - they work during trial, then need individual payment
 router.post('/', authenticateJWT, async (req, res) => {
   try {
     const { name, ghlLocationId } = req.body;
@@ -29,37 +30,6 @@ router.post('/', authenticateJWT, async (req, res) => {
     // GHL Location ID is now required (name will be fetched from GHL)
     if (!ghlLocationId) {
       return res.status(400).json({ error: 'GHL Location ID is required' });
-    }
-
-    // Check if user is admin or has unlimited access
-    const isAdmin = req.customer.role === 'admin' || req.customer.hasUnlimitedAccess;
-
-    // For regular users, check if they have available slots
-    if (!isAdmin) {
-      // Count only non-gifted sub-accounts (gifted ones don't use slots)
-      const currentSubAccountCount = await SubAccount.count({
-        where: { customerId: req.customer.id, isGifted: false }
-      });
-      const subscriptionQuantity = req.customer.subscriptionQuantity || 0;
-      const availableSlots = subscriptionQuantity - currentSubAccountCount;
-
-      if (availableSlots <= 0) {
-        // Calculate next slot price
-        const nextSlotNumber = subscriptionQuantity + 1;
-        const price = nextSlotNumber >= 11 ? 19 : 29;
-
-        return res.status(402).json({
-          error: 'No available slots',
-          message: subscriptionQuantity === 0
-            ? `You need to purchase a subscription to create sub-accounts. €${price}/month per sub-account.`
-            : `You have used all ${subscriptionQuantity} slot(s). Purchase another slot for €${price}/month.`,
-          subscriptionQuantity,
-          currentSubAccountCount,
-          availableSlots: 0,
-          nextSlotPrice: price,
-          isVolumeEligible: nextSlotNumber >= 11
-        });
-      }
     }
 
     // Validate GHL Location ID format
@@ -82,13 +52,20 @@ router.post('/', authenticateJWT, async (req, res) => {
       });
     }
 
+    // Check if user is admin/unlimited or on active trial
+    const isAdmin = req.customer.role === 'admin' || req.customer.hasUnlimitedAccess;
+    const isActiveTrial = req.customer.subscriptionStatus === 'trialing' &&
+                          req.customer.trialEndsAt &&
+                          new Date(req.customer.trialEndsAt) > new Date();
+
     // Create sub-account with temporary name (will be updated from GHL)
-    // Name will be fetched from GHL when OAuth connection is successful
+    // isPaid defaults to false - sub-accounts work during trial, then need individual payment
+    // Admin/gifted sub-accounts work without payment
     const subAccount = await SubAccount.create({
       customerId: req.customer.id,
       name: name || `Location ${ghlLocationId.substring(0, 8)}...`,
       ghlLocationId: ghlLocationId,
-      isPaid: true // All sub-accounts are paid now since they require slots
+      isPaid: isAdmin // Only admins get isPaid=true by default
     });
 
     res.status(201).json({

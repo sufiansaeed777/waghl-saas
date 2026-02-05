@@ -108,12 +108,16 @@ router.get('/token-by-location/:locationId', async (req, res) => {
       });
     }
 
-    // Check if sub-account is paid
-    if (!subAccount.isPaid && customer.role !== 'admin' && !customer.hasUnlimitedAccess) {
+    // Check if sub-account is paid (bypass during active trial - all sub-accounts work during trial)
+    const isActiveTrial = customer.subscriptionStatus === 'trialing' &&
+                          customer.trialEndsAt &&
+                          new Date(customer.trialEndsAt) > new Date();
+
+    if (!isActiveTrial && !subAccount.isPaid && customer.role !== 'admin' && !customer.hasUnlimitedAccess) {
       logger.warn('Sub-account not paid for embed access', { locationId, subAccountId: subAccount.id });
       return res.status(402).json({
         error: 'Payment required',
-        message: 'This sub-account requires an active subscription.',
+        message: 'This sub-account requires an active subscription. Please subscribe to activate it.',
         errorCode: 'SUBACCOUNT_NOT_PAID'
       });
     }
@@ -509,11 +513,15 @@ router.get('/status/:token', async (req, res) => {
         });
       }
 
-      // Check if sub-account is paid
-      if (!subAccount.isPaid) {
+      // Check if sub-account is paid (bypass during active trial - all sub-accounts work during trial)
+      const isActiveTrial = customer.subscriptionStatus === 'trialing' &&
+                            customer.trialEndsAt &&
+                            new Date(customer.trialEndsAt) > new Date();
+
+      if (!isActiveTrial && !subAccount.isPaid) {
         return res.status(402).json({
           error: 'Payment required',
-          message: 'This sub-account requires an active subscription.',
+          message: 'This sub-account requires an active subscription. Please subscribe to activate it.',
           errorCode: 'SUBACCOUNT_NOT_PAID'
         });
       }
@@ -548,7 +556,9 @@ router.post('/connect/:token', async (req, res) => {
       return res.status(401).json({ error: 'Invalid token' });
     }
 
-    const subAccount = await SubAccount.findByPk(subAccountId);
+    const subAccount = await SubAccount.findByPk(subAccountId, {
+      include: [{ model: Customer, as: 'customer' }]
+    });
     if (!subAccount) {
       return res.status(404).json({ error: 'Sub-account not found' });
     }
@@ -576,9 +586,16 @@ router.post('/connect/:token', async (req, res) => {
       return res.status(403).json({ error: 'Location ID mismatch' });
     }
 
-    // Check if paid
-    if (!subAccount.isPaid) {
-      return res.status(402).json({ error: 'Payment required to connect WhatsApp' });
+    // Check if paid (bypass during active trial - all sub-accounts work during trial)
+    const customer = subAccount.customer;
+    const isActiveTrial = customer &&
+                          customer.subscriptionStatus === 'trialing' &&
+                          customer.trialEndsAt &&
+                          new Date(customer.trialEndsAt) > new Date();
+    const isAdminOrUnlimited = customer && (customer.role === 'admin' || customer.hasUnlimitedAccess);
+
+    if (!isActiveTrial && !isAdminOrUnlimited && !subAccount.isPaid) {
+      return res.status(402).json({ error: 'Payment required to connect WhatsApp. Please subscribe to activate this sub-account.' });
     }
 
     const result = await whatsappService.connect(subAccountId);

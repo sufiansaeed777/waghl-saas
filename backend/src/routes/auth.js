@@ -25,6 +25,7 @@ router.post('/register', async (req, res) => {
     }
 
     // Create customer with 7-day free trial
+    // During trial, all sub-accounts work for free (unlimited creation)
     const trialEndsAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 days from now
     const customer = await Customer.create({
       email,
@@ -32,7 +33,6 @@ router.post('/register', async (req, res) => {
       name,
       company,
       subscriptionStatus: 'trialing',
-      subscriptionQuantity: 3, // 3 sub-accounts during trial
       trialEndsAt
     });
 

@@ -41,7 +41,8 @@ class StripeService {
     }
   }
 
-  // Create checkout session for subscription
+  // Create checkout session for a specific sub-account
+  // Pricing: €29/month for first 10 paid sub-accounts, €19/month for 11+
   async createCheckoutSession(customer, subAccountId) {
     try {
       checkStripeConfigured();
@@ -49,19 +50,38 @@ class StripeService {
         await this.createStripeCustomer(customer);
       }
 
+      // Count current paid sub-accounts (not including the one being purchased)
+      const paidSubAccountCount = await SubAccount.count({
+        where: { customerId: customer.id, isPaid: true, isGifted: false }
+      });
+
+      // Determine price based on how many the customer already has
+      // If they have 10+, they get volume discount (€19)
+      const isVolumePrice = paidSubAccountCount >= 10;
+      const priceId = isVolumePrice
+        ? process.env.STRIPE_VOLUME_PRICE_ID
+        : process.env.STRIPE_PRICE_ID;
+
       const session = await stripe.checkout.sessions.create({
         customer: customer.stripeCustomerId,
         payment_method_types: ['card'],
         line_items: [{
-          price: process.env.STRIPE_PRICE_ID,
+          price: priceId,
           quantity: 1
         }],
         mode: 'subscription',
-        success_url: `${process.env.FRONTEND_URL}/sub-accounts/${subAccountId}?payment=success`,
-        cancel_url: `${process.env.FRONTEND_URL}/sub-accounts/${subAccountId}?payment=cancelled`,
+        success_url: `${process.env.FRONTEND_URL}/sub-accounts?payment=success&subAccountId=${subAccountId}`,
+        cancel_url: `${process.env.FRONTEND_URL}/sub-accounts?payment=cancelled`,
         metadata: {
           customerId: customer.id,
-          subAccountId
+          subAccountId,
+          priceType: isVolumePrice ? 'volume' : 'standard'
+        },
+        subscription_data: {
+          metadata: {
+            customerId: customer.id,
+            subAccountId
+          }
         }
       });
 
@@ -191,26 +211,30 @@ class StripeService {
     }
   }
 
-  // Get subscription info for customer
+  // Get subscription info for customer (per-sub-account model)
   async getSubscriptionInfo(customer) {
     try {
-      // Count only non-gifted sub-accounts (gifted ones don't use slots)
-      const subAccountCount = await SubAccount.count({ where: { customerId: customer.id, isGifted: false } });
-      const subscriptionQuantity = customer.subscriptionQuantity || 0;
-      const availableSlots = subscriptionQuantity - subAccountCount;
+      // Count paid and unpaid sub-accounts
+      const paidSubAccountCount = await SubAccount.count({
+        where: { customerId: customer.id, isPaid: true, isGifted: false }
+      });
+      const totalSubAccountCount = await SubAccount.count({
+        where: { customerId: customer.id, isGifted: false }
+      });
+      const unpaidSubAccountCount = totalSubAccountCount - paidSubAccountCount;
 
-      // Calculate next slot price
-      const nextSlotNumber = subscriptionQuantity + 1;
-      const nextSlotPrice = nextSlotNumber >= 11 ? 19 : 29;
-      const isVolumeEligible = nextSlotNumber >= 11;
+      // Calculate price for next sub-account (volume discount at 11+)
+      const nextPrice = paidSubAccountCount >= 10 ? 19 : 29;
+      const isVolumeEligible = paidSubAccountCount >= 10;
 
       return {
-        subscriptionQuantity,
-        subAccountCount,
-        availableSlots,
-        nextSlotPrice,
+        paidSubAccountCount,
+        totalSubAccountCount,
+        unpaidSubAccountCount,
+        nextPrice,
         isVolumeEligible,
-        planType: customer.planType || 'standard'
+        planType: customer.planType || 'standard',
+        subscriptionStatus: customer.subscriptionStatus
       };
     } catch (error) {
       logger.error('Get subscription info error:', error);

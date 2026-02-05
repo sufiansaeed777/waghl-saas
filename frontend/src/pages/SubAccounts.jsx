@@ -3,7 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, X, ShoppingCart, XCircle, PlayCircle, Link2, Link2Off } from 'lucide-react'
+import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, X, XCircle, PlayCircle, Link2, Link2Off } from 'lucide-react'
 
 export default function SubAccounts() {
   const { user } = useAuth()
@@ -18,7 +18,7 @@ export default function SubAccounts() {
 
   // Subscription info
   const [subscriptionInfo, setSubscriptionInfo] = useState(null)
-  const [buyingSlot, setBuyingSlot] = useState(false)
+  const [subscribingTo, setSubscribingTo] = useState(null) // Track which sub-account is being subscribed
 
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('')
@@ -75,37 +75,24 @@ export default function SubAccounts() {
     }
   }
 
-  const handleBuySlot = async () => {
-    setBuyingSlot(true)
+  // Subscribe to a specific sub-account
+  const handleSubscribe = async (subAccountId) => {
+    setSubscribingTo(subAccountId)
     try {
-      const { data } = await api.post('/billing/add-slot')
-      if (data.checkoutUrl) {
-        window.location.href = data.checkoutUrl
+      const { data } = await api.post(`/billing/checkout/${subAccountId}`)
+      if (data.url) {
+        window.location.href = data.url
       } else {
-        toast.success(data.message || 'Slot added successfully')
-        fetchSubscriptionInfo()
+        toast.error('Failed to create checkout session')
       }
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Failed to add slot')
+      toast.error(error.response?.data?.error || 'Failed to start subscription')
     } finally {
-      setBuyingSlot(false)
+      setSubscribingTo(null)
     }
   }
 
   const handleCreateClick = () => {
-    // Check if user has available slots
-    if (!isAdmin && subscriptionInfo && subscriptionInfo.availableSlots <= 0) {
-      // Show buy slot message
-      const price = subscriptionInfo.nextSlotPrice || 29
-      const isVolume = subscriptionInfo.isVolumeEligible
-
-      if (subscriptionInfo.subscriptionQuantity === 0) {
-        toast.error(`You need to purchase a subscription first. €${price}/month per sub-account.`)
-      } else {
-        toast.error(`You've used all ${subscriptionInfo.subscriptionQuantity} slot(s). Buy another for €${price}/month.`)
-      }
-      return
-    }
     setShowCreateModal(true)
   }
 
@@ -229,57 +216,31 @@ export default function SubAccounts() {
                 Free Trial - {subscriptionInfo.trialDaysRemaining} day{subscriptionInfo.trialDaysRemaining !== 1 ? 's' : ''} remaining
               </p>
               <p className="text-sm text-blue-700 mt-1">
-                You have {subscriptionInfo.subscriptionQuantity} sub-account slot{subscriptionInfo.subscriptionQuantity !== 1 ? 's' : ''} during your trial. Subscribe before it ends to keep your sub-accounts active.
+                All your sub-accounts work for free during trial. Subscribe to individual sub-accounts before trial ends to keep them active.
               </p>
             </div>
-            <button
-              onClick={handleBuySlot}
-              disabled={buyingSlot}
-              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-            >
-              <CreditCard size={18} />
-              {buyingSlot ? 'Processing...' : 'Subscribe Now'}
-            </button>
           </div>
         </div>
       )}
 
-      {/* Subscription Info Banner - for regular users (not on trial) */}
-      {!isAdmin && subscriptionInfo && !subscriptionInfo.isTrialing && (
-        <div className={`mb-6 p-4 rounded-lg border ${
-          subscriptionInfo.availableSlots > 0
-            ? 'bg-green-50 border-green-200'
-            : 'bg-yellow-50 border-yellow-200'
-        }`}>
+      {/* Subscription Info Banner - for regular users after trial */}
+      {!isAdmin && subscriptionInfo && !subscriptionInfo.isTrialing && subscriptionInfo.unpaidSubAccountCount > 0 && (
+        <div className="mb-6 p-4 rounded-lg border bg-yellow-50 border-yellow-200">
           <div className="flex items-center justify-between flex-wrap gap-4">
             <div>
-              <p className="font-medium text-gray-900">
-                {subscriptionInfo.availableSlots > 0 ? (
-                  <>You can create <span className="text-green-600">{subscriptionInfo.availableSlots}</span> more sub-account{subscriptionInfo.availableSlots !== 1 ? 's' : ''}</>
-                ) : subscriptionInfo.subscriptionQuantity === 0 ? (
-                  <span className="text-yellow-700">No subscription yet - purchase to create sub-accounts</span>
-                ) : (
-                  <span className="text-yellow-700">All {subscriptionInfo.subscriptionQuantity} slot(s) used</span>
-                )}
+              <p className="font-medium text-yellow-800">
+                {subscriptionInfo.unpaidSubAccountCount} sub-account{subscriptionInfo.unpaidSubAccountCount !== 1 ? 's' : ''} need{subscriptionInfo.unpaidSubAccountCount === 1 ? 's' : ''} subscription
               </p>
-              <p className="text-sm text-gray-600 mt-1">
-                {subscriptionInfo.subscriptionQuantity > 0 && (
-                  <>{subscriptionInfo.subAccountCount} of {subscriptionInfo.subscriptionQuantity} slot{subscriptionInfo.subscriptionQuantity !== 1 ? 's' : ''} used • </>
-                )}
-                Next slot: €{subscriptionInfo.nextSlotPrice}/month
+              <p className="text-sm text-yellow-700 mt-1">
+                Subscribe to activate your sub-accounts.
                 {subscriptionInfo.isVolumeEligible && (
-                  <span className="ml-2 text-green-600 font-medium">(Volume discount!)</span>
+                  <span className="ml-1 text-green-600 font-medium">Volume discount active: €19/month each!</span>
+                )}
+                {!subscriptionInfo.isVolumeEligible && (
+                  <span className="ml-1">€{subscriptionInfo.nextPrice}/month per sub-account</span>
                 )}
               </p>
             </div>
-            <button
-              onClick={handleBuySlot}
-              disabled={buyingSlot}
-              className="flex items-center gap-2 px-4 py-2 bg-primary-500 text-white rounded-lg hover:bg-primary-600 disabled:opacity-50"
-            >
-              <ShoppingCart size={18} />
-              {buyingSlot ? 'Processing...' : `Buy Slot (€${subscriptionInfo.nextSlotPrice}/mo)`}
-            </button>
           </div>
         </div>
       )}
@@ -289,23 +250,17 @@ export default function SubAccounts() {
       ) : subAccounts.length === 0 ? (
         <div className="bg-white rounded-lg shadow p-12 text-center">
           <p className="text-gray-500 mb-4">No sub-accounts yet</p>
-          {!isAdmin && subscriptionInfo && subscriptionInfo.availableSlots <= 0 ? (
-            <button
-              onClick={handleBuySlot}
-              disabled={buyingSlot}
-              className="inline-flex items-center gap-2 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors"
-            >
-              <ShoppingCart size={20} />
-              {buyingSlot ? 'Processing...' : `Buy Subscription (€${subscriptionInfo?.nextSlotPrice || 29}/mo)`}
-            </button>
-          ) : (
-            <button
-              onClick={handleCreateClick}
-              className="inline-flex items-center gap-2 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors"
-            >
-              <Plus size={20} />
-              Create your first sub-account
-            </button>
+          <button
+            onClick={handleCreateClick}
+            className="inline-flex items-center gap-2 bg-primary-500 text-white px-4 py-2 rounded-lg hover:bg-primary-600 transition-colors"
+          >
+            <Plus size={20} />
+            Create your first sub-account
+          </button>
+          {subscriptionInfo?.isTrialing && (
+            <p className="text-sm text-blue-600 mt-3">
+              Create unlimited sub-accounts during your free trial!
+            </p>
           )}
         </div>
       ) : (
@@ -354,7 +309,7 @@ export default function SubAccounts() {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Phone</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Location ID</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Plan</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Payment</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Actions</th>
               </tr>
@@ -366,78 +321,101 @@ export default function SubAccounts() {
                     No sub-accounts found matching your filters
                   </td>
                 </tr>
-              ) : filteredSubAccounts.map((account) => (
-                <tr key={account.id} className="hover:bg-gray-50">
-                  <td className="px-6 py-4">
-                    <p className="font-medium text-gray-900">{account.name}</p>
-                  </td>
-                  <td className="px-6 py-4 text-gray-600">
-                    {account.phoneNumber || '-'}
-                  </td>
-                  <td className="px-6 py-4 text-gray-600 text-sm font-mono">
-                    <div className="flex items-center gap-2">
-                      {account.ghlLocationId || '-'}
-                      {account.ghlLocationId && (
-                        account.ghlConnected ? (
-                          <span title="GHL Connected" className="text-green-500"><Link2 size={14} /></span>
-                        ) : (
-                          <span title="GHL Disconnected" className="text-red-500"><Link2Off size={14} /></span>
-                        )
+              ) : filteredSubAccounts.map((account) => {
+                // Determine payment status
+                const isFree = isAdmin || account.isGifted
+                const isTrialing = subscriptionInfo?.isTrialing
+                const isPaid = account.isPaid
+
+                return (
+                  <tr key={account.id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4">
+                      <p className="font-medium text-gray-900">{account.name}</p>
+                    </td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {account.phoneNumber || '-'}
+                    </td>
+                    <td className="px-6 py-4 text-gray-600 text-sm font-mono">
+                      <div className="flex items-center gap-2">
+                        {account.ghlLocationId || '-'}
+                        {account.ghlLocationId && (
+                          account.ghlConnected ? (
+                            <span title="GHL Connected" className="text-green-500"><Link2 size={14} /></span>
+                          ) : (
+                            <span title="GHL Disconnected" className="text-red-500"><Link2Off size={14} /></span>
+                          )
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {isFree ? (
+                        <span className="text-sm px-2 py-1 rounded bg-purple-100 text-purple-700">
+                          Free
+                        </span>
+                      ) : isTrialing ? (
+                        <span className="text-sm px-2 py-1 rounded bg-blue-100 text-blue-700">
+                          Trial
+                        </span>
+                      ) : isPaid ? (
+                        <span className="text-sm px-2 py-1 rounded bg-green-100 text-green-700">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="text-sm px-2 py-1 rounded bg-red-100 text-red-700">
+                          Unpaid
+                        </span>
                       )}
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    {isAdmin || account.isGifted ? (
-                      <span className="text-sm px-2 py-1 rounded bg-purple-100 text-purple-700">
-                        Free (Unlimited)
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={`text-sm px-2 py-1 rounded ${
+                        account.status === 'connected' ? 'bg-green-100 text-green-700' :
+                        account.status === 'qr_ready' ? 'bg-yellow-100 text-yellow-700' :
+                        account.status === 'connecting' ? 'bg-blue-100 text-blue-700' :
+                        'bg-gray-100 text-gray-700'
+                      }`}>
+                        {account.status}
                       </span>
-                    ) : subscriptionInfo?.subscriptionQuantity >= 11 ? (
-                      <span className="text-sm px-2 py-1 rounded bg-blue-100 text-blue-700">
-                        €19/mo
-                      </span>
-                    ) : (
-                      <span className="text-sm px-2 py-1 rounded bg-gray-100 text-gray-700">
-                        €29/mo
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-6 py-4">
-                    <span className={`text-sm px-2 py-1 rounded ${
-                      account.status === 'connected' ? 'bg-green-100 text-green-700' :
-                      account.status === 'qr_ready' ? 'bg-yellow-100 text-yellow-700' :
-                      account.status === 'connecting' ? 'bg-blue-100 text-blue-700' :
-                      'bg-gray-100 text-gray-700'
-                    }`}>
-                      {account.status}
-                    </span>
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Link
-                        to={`/sub-accounts/${account.id}`}
-                        className="p-2 text-gray-600 hover:text-primary-500 hover:bg-gray-100 rounded"
-                        title="View details"
-                      >
-                        <Eye size={18} />
-                      </Link>
-                      <button
-                        onClick={() => toggleSubAccount(account.id, account.isActive, account.name)}
-                        className={`p-2 rounded ${account.isActive ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}
-                        title={account.isActive ? 'Pause sub-account' : 'Resume sub-account'}
-                      >
-                        {account.isActive ? <XCircle size={18} /> : <PlayCircle size={18} />}
-                      </button>
-                      <button
-                        onClick={() => deleteSubAccount(account.id, account.name)}
-                        className="p-2 text-gray-600 hover:text-red-500 hover:bg-gray-100 rounded"
-                        title="Delete sub-account"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {/* Subscribe button for unpaid sub-accounts */}
+                        {!isFree && !isTrialing && !isPaid && (
+                          <button
+                            onClick={() => handleSubscribe(account.id)}
+                            disabled={subscribingTo === account.id}
+                            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary-500 text-white rounded hover:bg-primary-600 disabled:opacity-50"
+                            title="Subscribe to activate"
+                          >
+                            <CreditCard size={14} />
+                            {subscribingTo === account.id ? '...' : 'Subscribe'}
+                          </button>
+                        )}
+                        <Link
+                          to={`/sub-accounts/${account.id}`}
+                          className="p-2 text-gray-600 hover:text-primary-500 hover:bg-gray-100 rounded"
+                          title="View details"
+                        >
+                          <Eye size={18} />
+                        </Link>
+                        <button
+                          onClick={() => toggleSubAccount(account.id, account.isActive, account.name)}
+                          className={`p-2 rounded ${account.isActive ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}
+                          title={account.isActive ? 'Pause sub-account' : 'Resume sub-account'}
+                        >
+                          {account.isActive ? <XCircle size={18} /> : <PlayCircle size={18} />}
+                        </button>
+                        <button
+                          onClick={() => deleteSubAccount(account.id, account.name)}
+                          className="p-2 text-gray-600 hover:text-red-500 hover:bg-gray-100 rounded"
+                          title="Delete sub-account"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -460,12 +438,18 @@ export default function SubAccounts() {
               </button>
             </div>
 
-            {/* Slot info */}
-            {!isAdmin && subscriptionInfo && (
+            {/* Trial/Subscription info */}
+            {!isAdmin && subscriptionInfo?.isTrialing && (
               <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg text-sm">
                 <p className="text-blue-800">
-                  After creating this sub-account, you will have{' '}
-                  <strong>{subscriptionInfo.availableSlots - 1}</strong> slot{subscriptionInfo.availableSlots - 1 !== 1 ? 's' : ''} remaining.
+                  <strong>Free Trial:</strong> This sub-account will work for free during your trial ({subscriptionInfo.trialDaysRemaining} days left).
+                </p>
+              </div>
+            )}
+            {!isAdmin && subscriptionInfo && !subscriptionInfo.isTrialing && (
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm">
+                <p className="text-yellow-800">
+                  You'll need to subscribe (€{subscriptionInfo.nextPrice}/month) to activate this sub-account after creation.
                 </p>
               </div>
             )}
