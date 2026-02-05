@@ -25,10 +25,11 @@ export default function SubAccounts() {
   const [filterStatus, setFilterStatus] = useState('all')
 
 
-  // Handle URL params for GHL connection results
+  // Handle URL params for GHL connection and payment results
   useEffect(() => {
     const ghlError = searchParams.get('ghl_error')
     const subscriptionStatus = searchParams.get('subscription')
+    const paymentStatus = searchParams.get('payment')
 
     if (ghlError) {
       if (ghlError === 'location_mismatch') {
@@ -39,11 +40,21 @@ export default function SubAccounts() {
       navigate('/sub-accounts', { replace: true })
     }
 
+    // Handle subscription status (legacy)
     if (subscriptionStatus === 'success') {
       toast.success('Subscription activated successfully!')
       navigate('/sub-accounts', { replace: true })
     } else if (subscriptionStatus === 'cancelled') {
       toast.error('Subscription checkout was cancelled')
+      navigate('/sub-accounts', { replace: true })
+    }
+
+    // Handle payment status (per-sub-account)
+    if (paymentStatus === 'success') {
+      toast.success('Payment successful! Sub-account activated.')
+      navigate('/sub-accounts', { replace: true })
+    } else if (paymentStatus === 'cancelled') {
+      toast.error('Payment was cancelled')
       navigate('/sub-accounts', { replace: true })
     }
   }, [searchParams, navigate])
