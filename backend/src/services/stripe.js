@@ -251,42 +251,36 @@ class StripeService {
           const session = event.data.object;
           const { customerId, subAccountId, action, newQuantity } = session.metadata;
 
-          // Update customer subscription status
+          // Update customer and activate the specific sub-account
           const customer = await Customer.findByPk(customerId);
           if (customer) {
-            // Get subscription details to get quantity
-            let subscriptionQuantity = customer.subscriptionQuantity || 0;
+            // Check if still on active trial
+            const isActiveTrial = customer.subscriptionStatus === 'trialing' &&
+                                  customer.trialEndsAt &&
+                                  new Date(customer.trialEndsAt) > new Date();
 
-            if (session.subscription) {
-              const subscription = await stripe.subscriptions.retrieve(session.subscription);
-              const quantity = subscription.items.data[0]?.quantity || 1;
-              subscriptionQuantity = quantity;
+            // Store subscription ID but DON'T end trial early
+            // Trial expires naturally, paid sub-accounts continue working after
+            const updateData = {
+              subscriptionId: session.subscription
+            };
+
+            // Only change to 'active' if trial has already ended
+            if (!isActiveTrial) {
+              updateData.subscriptionStatus = 'active';
+              updateData.trialEndsAt = null;
+              updateData.hasUsedTrial = true;
             }
 
-            // If this was a slot addition
-            if (action === 'add_slot' && newQuantity) {
-              subscriptionQuantity = parseInt(newQuantity);
-            }
-
-            // If user was on trial, mark trial as used
-            const wasTrialing = customer.subscriptionStatus === 'trialing';
-
-            await customer.update({
-              subscriptionStatus: 'active',
-              subscriptionId: session.subscription,
-              subscriptionQuantity: subscriptionQuantity,
-              planType: subscriptionQuantity >= 11 ? 'volume' : 'standard',
-              // Clear trial fields when converting to paid
-              trialEndsAt: null,
-              hasUsedTrial: wasTrialing ? true : customer.hasUsedTrial
-            });
+            await customer.update(updateData);
           }
 
-          // Activate sub-account (legacy support)
+          // Activate the specific sub-account that was paid for
           if (subAccountId) {
             const subAccount = await SubAccount.findByPk(subAccountId);
             if (subAccount) {
               await subAccount.update({ isPaid: true });
+              logger.info(`Sub-account ${subAccountId} marked as paid`);
             }
           }
 
