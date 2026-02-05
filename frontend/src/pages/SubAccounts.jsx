@@ -378,13 +378,13 @@ export default function SubAccounts() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* Subscribe button for unpaid sub-accounts */}
-                        {!isFree && !isTrialing && !isPaid && (
+                        {/* Subscribe button for all non-paid, non-free sub-accounts */}
+                        {!isFree && !isPaid && (
                           <button
                             onClick={() => handleSubscribe(account.id)}
                             disabled={subscribingTo === account.id}
                             className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary-500 text-white rounded hover:bg-primary-600 disabled:opacity-50"
-                            title="Subscribe to activate"
+                            title={isTrialing ? "Subscribe now (starts after trial)" : "Subscribe to activate"}
                           >
                             <CreditCard size={14} />
                             {subscribingTo === account.id ? '...' : 'Subscribe'}
