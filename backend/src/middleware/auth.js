@@ -168,7 +168,12 @@ const requirePaidSubAccount = async (req, res, next) => {
       return res.status(404).json({ error: 'Sub-account not found' });
     }
 
-    if (!subAccount.isPaid) {
+    // Check if on active trial (bypass isPaid check during trial)
+    const isActiveTrial = req.customer.subscriptionStatus === 'trialing' &&
+                          req.customer.trialEndsAt &&
+                          new Date(req.customer.trialEndsAt) > new Date();
+
+    if (!isActiveTrial && !subAccount.isPaid) {
       return res.status(402).json({
         error: 'Payment required',
         message: 'This sub-account requires an active subscription',
