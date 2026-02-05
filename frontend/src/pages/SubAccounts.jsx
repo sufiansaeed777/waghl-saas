@@ -3,7 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, X, XCircle, PlayCircle, Link2, Link2Off } from 'lucide-react'
+import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, X, XCircle, PlayCircle, Link2, Link2Off, ExternalLink } from 'lucide-react'
 
 export default function SubAccounts() {
   const { user } = useAuth()
@@ -101,6 +101,20 @@ export default function SubAccounts() {
       toast.error(error.response?.data?.error || 'Failed to start subscription')
     } finally {
       setSubscribingTo(null)
+    }
+  }
+
+  // Open Stripe billing portal to manage subscription
+  const handleManageBilling = async () => {
+    try {
+      const { data } = await api.get('/billing/portal')
+      if (data.url) {
+        window.open(data.url, '_blank')
+      } else {
+        toast.error('Failed to open billing portal')
+      }
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to open billing portal')
     }
   }
 
@@ -390,7 +404,7 @@ export default function SubAccounts() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* Subscribe button for all non-paid, non-free sub-accounts */}
+                        {/* Subscribe button for unpaid sub-accounts */}
                         {!isFree && !isPaid && (
                           <button
                             onClick={() => handleSubscribe(account.id)}
@@ -400,6 +414,17 @@ export default function SubAccounts() {
                           >
                             <CreditCard size={14} />
                             {subscribingTo === account.id ? '...' : 'Subscribe'}
+                          </button>
+                        )}
+                        {/* Manage Billing button for paid sub-accounts */}
+                        {!isFree && isPaid && (
+                          <button
+                            onClick={handleManageBilling}
+                            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
+                            title="Manage subscription"
+                          >
+                            <ExternalLink size={14} />
+                            Manage
                           </button>
                         )}
                         <Link
