@@ -172,14 +172,18 @@ export default function SubAccounts() {
     }
   }
 
-  const deleteSubAccount = async (id, name) => {
-    if (!confirm(`Are you sure you want to delete "${name}"?`)) return
+  const deleteSubAccount = async (id, name, isPaid) => {
+    const message = isPaid
+      ? `Are you sure you want to delete "${name}"?\n\n⚠️ This will also cancel the subscription for this sub-account.`
+      : `Are you sure you want to delete "${name}"?`
+
+    if (!confirm(message)) return
 
     try {
       await api.delete(`/sub-accounts/${id}`)
       toast.success('Sub-account deleted')
       fetchSubAccounts()
-      fetchSubscriptionInfo() // Refresh slot count
+      fetchSubscriptionInfo()
     } catch (error) {
       toast.error('Failed to delete sub-account')
     }
@@ -427,7 +431,7 @@ export default function SubAccounts() {
                         </Link>
                         {/* Delete */}
                         <button
-                          onClick={() => deleteSubAccount(account.id, account.name)}
+                          onClick={() => deleteSubAccount(account.id, account.name, isPaid)}
                           className="p-2 text-gray-600 hover:text-red-500 hover:bg-gray-100 rounded"
                           title="Delete sub-account"
                         >
