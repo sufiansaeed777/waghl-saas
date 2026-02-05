@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
 
 // Enable drip mode for GHL webhooks (rate limiting)
 const DRIP_MODE_ENABLED = process.env.DRIP_MODE_ENABLED !== 'false'; // Default: true
-const DRIP_DELAY_MS = parseInt(process.env.DRIP_DELAY_MS) || 1000; // Default: 1 second between messages
+const DRIP_DELAY_MS = parseInt(process.env.DRIP_DELAY_MS) || 200; // Default: 200ms between messages
 
 // Helper to guess media type from URL
 function guessMediaType(url) {

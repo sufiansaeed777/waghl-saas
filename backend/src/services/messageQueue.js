@@ -2,9 +2,9 @@ const logger = require('../utils/logger');
 
 // Message queue configuration
 const DEFAULT_RATE_LIMIT = {
-  messagesPerSecond: 1,      // Max messages per second
-  burstLimit: 5,             // Allow burst of messages before throttling
-  delayBetweenMessages: 1000 // Minimum delay between messages (ms)
+  messagesPerSecond: 5,      // Max messages per second
+  burstLimit: 10,            // Allow burst of messages before throttling
+  delayBetweenMessages: 200  // Minimum delay between messages (ms)
 };
 
 // Queue storage per sub-account
