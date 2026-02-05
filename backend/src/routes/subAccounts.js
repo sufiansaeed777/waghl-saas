@@ -5,6 +5,11 @@ const { authenticateJWT, authenticateApiKey } = require('../middleware/auth');
 const whatsappService = require('../services/whatsapp');
 const logger = require('../utils/logger');
 
+// Initialize Stripe for subscription cancellation
+const stripe = process.env.STRIPE_SECRET_KEY
+  ? require('stripe')(process.env.STRIPE_SECRET_KEY)
+  : null;
+
 // Get all sub-accounts for current customer
 router.get('/', authenticateJWT, async (req, res) => {
   try {
@@ -135,6 +140,29 @@ router.delete('/:id', authenticateJWT, async (req, res) => {
 
     if (!subAccount) {
       return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    // Cancel Stripe subscription if exists
+    if (stripe && subAccount.isPaid && req.customer.stripeCustomerId) {
+      try {
+        // List all subscriptions for this customer
+        const subscriptions = await stripe.subscriptions.list({
+          customer: req.customer.stripeCustomerId,
+          status: 'active',
+          limit: 100
+        });
+
+        // Find and cancel subscriptions for this sub-account
+        for (const subscription of subscriptions.data) {
+          if (subscription.metadata?.subAccountId === subAccount.id) {
+            await stripe.subscriptions.cancel(subscription.id);
+            logger.info(`Cancelled Stripe subscription ${subscription.id} for sub-account ${subAccount.id}`);
+          }
+        }
+      } catch (stripeError) {
+        logger.error('Failed to cancel Stripe subscription:', stripeError);
+        // Continue with deletion even if Stripe cancellation fails
+      }
     }
 
     // Disconnect WhatsApp if connected
