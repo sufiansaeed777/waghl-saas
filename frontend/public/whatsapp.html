@@ -674,7 +674,11 @@
     // Show location picker UI
     function showLocationPicker(locations) {
       if (locations.length === 0) {
-        showError('No GHL locations found. Please contact your administrator.');
+        // Show GHL disconnected error instead of generic "no locations" error
+        showSubscriptionError({
+          errorCode: 'GHL_DISCONNECTED',
+          message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.'
+        });
         return;
       }
 
@@ -761,7 +765,11 @@
         }
         loadStatus();
       } catch (err) {
-        showError(err.message || 'Failed to load. Please try again.');
+        // Show GHL disconnected error for any failure
+        showSubscriptionError({
+          errorCode: 'GHL_DISCONNECTED',
+          message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.'
+        });
       }
     }
 
