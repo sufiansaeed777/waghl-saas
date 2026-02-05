@@ -5,7 +5,9 @@ const stripeService = require('../services/stripe');
 const { SubAccount } = require('../models');
 const logger = require('../utils/logger');
 
-// Create checkout session for sub-account
+// Subscribe/Resume subscription for sub-account
+// If customer has saved payment method, creates subscription directly
+// Otherwise returns checkout URL
 router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
   try {
     // Check if Stripe is configured
@@ -34,12 +36,60 @@ router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
       return res.status(400).json({ error: 'This sub-account is gifted and does not require payment' });
     }
 
+    // Check if customer has a saved payment method
+    if (req.customer.stripeCustomerId) {
+      const Stripe = require('stripe');
+      const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+      try {
+        // Get customer's default payment method
+        const customer = await stripe.customers.retrieve(req.customer.stripeCustomerId);
+        const defaultPaymentMethod = customer.invoice_settings?.default_payment_method;
+
+        if (defaultPaymentMethod) {
+          // Customer has saved payment method - create subscription directly
+          const paidCount = await SubAccount.count({
+            where: { customerId: req.customer.id, isPaid: true, isGifted: false }
+          });
+          const isVolumePrice = paidCount >= 10;
+          const priceId = isVolumePrice
+            ? process.env.STRIPE_VOLUME_PRICE_ID
+            : process.env.STRIPE_PRICE_ID;
+
+          const subscription = await stripe.subscriptions.create({
+            customer: req.customer.stripeCustomerId,
+            items: [{ price: priceId }],
+            default_payment_method: defaultPaymentMethod,
+            metadata: {
+              customerId: req.customer.id,
+              subAccountId: subAccountId
+            }
+          });
+
+          // Mark sub-account as paid
+          await subAccount.update({ isPaid: true });
+
+          logger.info(`Auto-subscribed sub-account ${subAccountId} using saved payment method`);
+
+          return res.json({
+            success: true,
+            autoSubscribed: true,
+            message: 'Subscription activated successfully'
+          });
+        }
+      } catch (stripeError) {
+        logger.warn('Failed to auto-subscribe, falling back to checkout:', stripeError.message);
+        // Fall through to checkout
+      }
+    }
+
+    // No saved payment method - create checkout session
     const session = await stripeService.createCheckoutSession(
       req.customer,
       subAccountId
     );
 
-    res.json({ url: session.url });
+    res.json({ url: session.url, autoSubscribed: false });
   } catch (error) {
     logger.error('Checkout error:', error);
     res.status(500).json({ error: 'Failed to create checkout session' });

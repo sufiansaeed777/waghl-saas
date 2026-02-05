@@ -86,16 +86,23 @@ export default function SubAccounts() {
     }
   }
 
-  // Subscribe to a specific sub-account
+  // Subscribe/Resume subscription for a sub-account
   const handleSubscribe = async (subAccountId) => {
     setSubscribingTo(subAccountId)
     try {
       const { data } = await api.post(`/billing/checkout/${subAccountId}`)
-      if (data.url) {
+
+      if (data.autoSubscribed) {
+        // Payment method was saved - subscription created automatically
+        toast.success(data.message || 'Subscription activated!')
+        fetchSubAccounts()
+        fetchSubscriptionInfo()
+      } else if (data.url) {
+        // No saved payment method - open checkout
         window.open(data.url, '_blank')
         toast.success('Stripe checkout opened in new tab')
       } else {
-        toast.error('Failed to create checkout session')
+        toast.error('Failed to create subscription')
       }
     } catch (error) {
       toast.error(error.response?.data?.error || 'Failed to start subscription')
