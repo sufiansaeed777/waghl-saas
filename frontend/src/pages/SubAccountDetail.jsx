@@ -100,7 +100,8 @@ export default function SubAccountDetail() {
     setConnectingGhl(true)
     try {
       const { data } = await api.get(`/ghl/auth-url/${id}`)
-      window.location.href = data.authUrl
+      window.open(data.authUrl, '_blank')
+      setConnectingGhl(false)
     } catch (error) {
       toast.error('Failed to start GHL connection')
       setConnectingGhl(false)

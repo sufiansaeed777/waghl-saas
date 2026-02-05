@@ -119,28 +119,27 @@ export default function SubAccounts() {
       })
       const subAccountId = data.subAccount.id
 
-      toast.success('Sub-account created! Redirecting to GHL...')
+      toast.success('Sub-account created! Complete GHL connection in the new tab.')
       setShowCreateModal(false)
       setNewLocationId('')
 
-      // Automatically start GHL OAuth connection via full page redirect (same as "Connect to GHL")
+      // Automatically start GHL OAuth connection in new tab
       try {
         const { data: authData } = await api.get(`/ghl/auth-url/${subAccountId}`)
 
         if (!authData?.authUrl) {
           toast.error('Failed to get GHL authorization URL')
-          fetchSubAccounts()
-          fetchSubscriptionInfo()
-          return
+        } else {
+          // Open in new tab
+          window.open(authData.authUrl, '_blank')
         }
-
-        // Full page redirect (same approach as SubAccountDetail)
-        window.location.href = authData.authUrl
       } catch (err) {
         toast.error('Failed to start GHL connection')
-        fetchSubAccounts()
-        fetchSubscriptionInfo()
       }
+
+      // Refresh list since sub-account was created
+      fetchSubAccounts()
+      fetchSubscriptionInfo()
 
     } catch (error) {
       const errorData = error.response?.data
