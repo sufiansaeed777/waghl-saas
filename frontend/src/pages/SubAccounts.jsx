@@ -3,7 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, X, ShoppingCart, XCircle, PlayCircle } from 'lucide-react'
+import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, X, ShoppingCart, XCircle, PlayCircle, Link2, Link2Off } from 'lucide-react'
 
 export default function SubAccounts() {
   const { user } = useAuth()
@@ -376,7 +376,16 @@ export default function SubAccounts() {
                     {account.phoneNumber || '-'}
                   </td>
                   <td className="px-6 py-4 text-gray-600 text-sm font-mono">
-                    {account.ghlLocationId || '-'}
+                    <div className="flex items-center gap-2">
+                      {account.ghlLocationId || '-'}
+                      {account.ghlLocationId && (
+                        account.ghlConnected ? (
+                          <span title="GHL Connected" className="text-green-500"><Link2 size={14} /></span>
+                        ) : (
+                          <span title="GHL Disconnected" className="text-red-500"><Link2Off size={14} /></span>
+                        )
+                      )}
+                    </div>
                   </td>
                   <td className="px-6 py-4">
                     {isAdmin || account.isGifted ? (
