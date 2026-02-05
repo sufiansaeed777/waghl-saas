@@ -674,7 +674,7 @@
     // Show location picker UI
     function showLocationPicker(locations) {
       if (locations.length === 0) {
-        showError('No GHL locations found. Click below to connect your GHL location.', true);
+        showError('No GHL locations found. Please contact your administrator.');
         return;
       }
 
@@ -874,24 +874,15 @@
       showLocationPicker(locations);
     }
 
-    function showError(message, showConnectButton = true) {
+    function showError(message) {
       document.getElementById('content').innerHTML = `
         <div class="error-box">
           <h1>Setup Required</h1>
           <p>${message}</p>
-          ${showConnectButton ? `
-            <button class="btn btn-primary" style="margin-top: 20px;" onclick="openGhlOAuth()">
-              Connect GHL Location
-            </button>
-            <p style="margin-top: 12px; font-size: 12px; color: #6b7280;">
-              This will open GHL authorization in a new window
-            </p>
-          ` : `
-            <div class="info-box" style="margin-top: 16px;">
-              <p><strong>To fix this:</strong><br>
-              Please contact your administrator to configure this location.</p>
-            </div>
-          `}
+          <div class="info-box" style="margin-top: 16px;">
+            <p><strong>To fix this:</strong><br>
+            Please contact your administrator to configure this location.</p>
+          </div>
         </div>
       `;
     }
