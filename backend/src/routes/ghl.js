@@ -488,8 +488,8 @@ router.post('/uninstall/:subAccountId', authenticateJWT, async (req, res) => {
   }
 });
 
-// GHL Webhook - receives outbound messages from GHL
-// When user sends "SMS" in GHL, it calls this webhook
+// GHL Webhook - receives outbound messages and other events from GHL
+// Handles: OutboundMessage, SMS, ContactDelete, ContactUpdate
 router.post('/webhook', async (req, res) => {
   try {
     const payload = req.body;
@@ -497,6 +497,45 @@ router.post('/webhook', async (req, res) => {
 
     // Verify webhook (GHL sends various event types)
     const eventType = payload.type || payload.event;
+
+    // Handle contact deletion - clear WhatsAppMapping when contact is deleted in GHL
+    if (eventType === 'ContactDelete' || eventType === 'contact.delete') {
+      const { locationId, contactId, phone } = payload;
+
+      logger.info('GHL contact delete event received:', { locationId, contactId, phone });
+
+      if (phone) {
+        // Clean phone number (remove + and spaces)
+        const cleanPhone = phone.replace(/[^\d]/g, '');
+
+        // Delete mapping for this phone number
+        const deleted = await WhatsAppMapping.destroy({
+          where: { phoneNumber: cleanPhone }
+        });
+
+        logger.info(`Cleared WhatsAppMapping for deleted contact: ${cleanPhone}, deleted ${deleted} entries`);
+      }
+
+      return res.status(200).json({ success: true, message: 'Contact delete handled' });
+    }
+
+    // Handle contact update - could also clear stale data
+    if (eventType === 'ContactUpdate' || eventType === 'contact.update') {
+      const { locationId, contactId, phone, oldPhone } = payload;
+
+      logger.info('GHL contact update event received:', { locationId, contactId, phone, oldPhone });
+
+      // If phone number changed, clear old mapping
+      if (oldPhone && oldPhone !== phone) {
+        const cleanOldPhone = oldPhone.replace(/[^\d]/g, '');
+        const deleted = await WhatsAppMapping.destroy({
+          where: { phoneNumber: cleanOldPhone }
+        });
+        logger.info(`Cleared old WhatsAppMapping for updated contact: ${cleanOldPhone}, deleted ${deleted} entries`);
+      }
+
+      return res.status(200).json({ success: true, message: 'Contact update handled' });
+    }
 
     // Handle outbound SMS/message events
     if (eventType === 'OutboundMessage' || eventType === 'SMS' || payload.messageType === 'SMS') {
