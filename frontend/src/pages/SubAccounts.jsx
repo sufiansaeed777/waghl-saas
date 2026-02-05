@@ -81,7 +81,8 @@ export default function SubAccounts() {
     try {
       const { data } = await api.post(`/billing/checkout/${subAccountId}`)
       if (data.url) {
-        window.location.href = data.url
+        window.open(data.url, '_blank')
+        toast.success('Stripe checkout opened in new tab')
       } else {
         toast.error('Failed to create checkout session')
       }
