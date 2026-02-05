@@ -3,7 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Eye, CreditCard, MapPin, Search, Filter, X, XCircle, PlayCircle, Link2, Link2Off, ExternalLink } from 'lucide-react'
+import { Plus, Trash2, Eye, MapPin, Search, Filter, X, XCircle, PlayCircle, Link2, Link2Off } from 'lucide-react'
 
 export default function SubAccounts() {
   const { user } = useAuth()
@@ -104,17 +104,22 @@ export default function SubAccounts() {
     }
   }
 
-  // Open Stripe billing portal to manage subscription
-  const handleManageBilling = async () => {
+  // Cancel subscription for a sub-account
+  const [cancellingId, setCancellingId] = useState(null)
+
+  const handleCancelSubscription = async (subAccountId, name) => {
+    if (!confirm(`Cancel subscription for "${name}"? Access will continue until the end of the billing period.`)) return
+
+    setCancellingId(subAccountId)
     try {
-      const { data } = await api.get('/billing/portal')
-      if (data.url) {
-        window.open(data.url, '_blank')
-      } else {
-        toast.error('Failed to open billing portal')
-      }
+      const { data } = await api.post(`/billing/cancel/${subAccountId}`)
+      toast.success(data.message || 'Subscription cancelled')
+      fetchSubAccounts()
+      fetchSubscriptionInfo()
     } catch (error) {
-      toast.error(error.response?.data?.error || 'Failed to open billing portal')
+      toast.error(error.response?.data?.error || 'Failed to cancel subscription')
+    } finally {
+      setCancellingId(null)
     }
   }
 
@@ -179,20 +184,6 @@ export default function SubAccounts() {
       toast.error('Failed to delete sub-account')
     }
   }
-
-  const toggleSubAccount = async (id, isActive, name) => {
-    const action = isActive ? 'pause' : 'resume'
-    if (!confirm(`Are you sure you want to ${action} "${name}"?`)) return
-
-    try {
-      await api.put(`/sub-accounts/${id}`, { isActive: !isActive })
-      toast.success(`Sub-account ${isActive ? 'paused' : 'resumed'}`)
-      fetchSubAccounts()
-    } catch (error) {
-      toast.error(`Failed to ${action} sub-account`)
-    }
-  }
-
 
   // Filtered sub-accounts based on search and filters
   const filteredSubAccounts = useMemo(() => {
@@ -404,29 +395,29 @@ export default function SubAccounts() {
                     </td>
                     <td className="px-6 py-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {/* Subscribe button for unpaid sub-accounts */}
+                        {/* Play = Subscribe (for unpaid) */}
                         {!isFree && !isPaid && (
                           <button
                             onClick={() => handleSubscribe(account.id)}
                             disabled={subscribingTo === account.id}
-                            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-primary-500 text-white rounded hover:bg-primary-600 disabled:opacity-50"
-                            title={isTrialing ? "Subscribe now (starts after trial)" : "Subscribe to activate"}
+                            className="p-2 text-green-500 hover:bg-green-50 rounded disabled:opacity-50"
+                            title={isTrialing ? "Subscribe (starts after trial)" : "Subscribe to activate"}
                           >
-                            <CreditCard size={14} />
-                            {subscribingTo === account.id ? '...' : 'Subscribe'}
+                            <PlayCircle size={18} />
                           </button>
                         )}
-                        {/* Manage Billing button for paid sub-accounts */}
+                        {/* Cross = Cancel subscription (for paid) */}
                         {!isFree && isPaid && (
                           <button
-                            onClick={handleManageBilling}
-                            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
-                            title="Manage subscription"
+                            onClick={() => handleCancelSubscription(account.id, account.name)}
+                            disabled={cancellingId === account.id}
+                            className="p-2 text-red-500 hover:bg-red-50 rounded disabled:opacity-50"
+                            title="Cancel subscription"
                           >
-                            <ExternalLink size={14} />
-                            Manage
+                            <XCircle size={18} />
                           </button>
                         )}
+                        {/* Eye = View details */}
                         <Link
                           to={`/sub-accounts/${account.id}`}
                           className="p-2 text-gray-600 hover:text-primary-500 hover:bg-gray-100 rounded"
@@ -434,13 +425,7 @@ export default function SubAccounts() {
                         >
                           <Eye size={18} />
                         </Link>
-                        <button
-                          onClick={() => toggleSubAccount(account.id, account.isActive, account.name)}
-                          className={`p-2 rounded ${account.isActive ? 'text-red-500 hover:bg-red-50' : 'text-green-500 hover:bg-green-50'}`}
-                          title={account.isActive ? 'Pause sub-account' : 'Resume sub-account'}
-                        >
-                          {account.isActive ? <XCircle size={18} /> : <PlayCircle size={18} />}
-                        </button>
+                        {/* Delete */}
                         <button
                           onClick={() => deleteSubAccount(account.id, account.name)}
                           className="p-2 text-gray-600 hover:text-red-500 hover:bg-gray-100 rounded"

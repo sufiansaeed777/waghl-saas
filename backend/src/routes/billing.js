@@ -126,6 +126,66 @@ router.post('/add-slot', authenticateJWT, async (req, res) => {
   }
 });
 
+// Cancel subscription for a specific sub-account
+router.post('/cancel/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    if (!stripeService.isConfigured()) {
+      return res.status(503).json({ error: 'Billing is not configured' });
+    }
+
+    const subAccountId = req.params.subAccountId;
+
+    // Validate ownership
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    if (!subAccount.isPaid) {
+      return res.status(400).json({ error: 'This sub-account does not have an active subscription' });
+    }
+
+    if (!req.customer.stripeCustomerId) {
+      return res.status(400).json({ error: 'No Stripe customer found' });
+    }
+
+    // Find and cancel the subscription for this sub-account
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+    const subscriptions = await stripe.subscriptions.list({
+      customer: req.customer.stripeCustomerId,
+      status: 'active',
+      limit: 100
+    });
+
+    let cancelled = false;
+    for (const subscription of subscriptions.data) {
+      if (subscription.metadata?.subAccountId === subAccountId) {
+        // Cancel at period end (user keeps access until billing period ends)
+        await stripe.subscriptions.update(subscription.id, {
+          cancel_at_period_end: true
+        });
+        cancelled = true;
+        logger.info(`Subscription ${subscription.id} scheduled for cancellation for sub-account ${subAccountId}`);
+        break;
+      }
+    }
+
+    if (!cancelled) {
+      return res.status(404).json({ error: 'No active subscription found for this sub-account' });
+    }
+
+    res.json({ success: true, message: 'Subscription will be cancelled at the end of the billing period' });
+  } catch (error) {
+    logger.error('Cancel subscription error:', error);
+    res.status(500).json({ error: 'Failed to cancel subscription' });
+  }
+});
+
 // Get billing portal
 router.get('/portal', authenticateJWT, async (req, res) => {
   try {
