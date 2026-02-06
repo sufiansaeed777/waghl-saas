@@ -4,12 +4,7 @@ const { authenticateJWT } = require('../middleware/auth');
 const { Customer, SubAccount, WhatsAppMapping } = require('../models');
 const ghlService = require('../services/ghl');
 const whatsappService = require('../services/whatsapp');
-const messageQueue = require('../services/messageQueue');
 const logger = require('../utils/logger');
-
-// Enable drip mode for GHL webhooks (rate limiting)
-const DRIP_MODE_ENABLED = process.env.DRIP_MODE_ENABLED !== 'false'; // Default: true
-const DRIP_DELAY_MS = parseInt(process.env.DRIP_DELAY_MS) || 200; // Default: 200ms between messages
 
 // Helper to guess media type from URL
 function guessMediaType(url) {
@@ -638,62 +633,30 @@ router.post('/webhook', async (req, res) => {
         // Continue anyway - mapping is not critical for sending
       }
 
-      // Send message via WhatsApp (using queue for rate limiting / drip mode)
+      // Send message via WhatsApp
       try {
-        if (DRIP_MODE_ENABLED) {
-          // Use message queue for rate-limited sending (drip mode)
-          messageQueue.setRateLimit(subAccount.id, { delayBetweenMessages: DRIP_DELAY_MS });
-
-          // Handle media attachments
-          if (parsedAttachments && parsedAttachments.length > 0) {
-            for (const attachment of parsedAttachments) {
-              await messageQueue.queueMessage(
-                subAccount.id,
-                phoneNumber,
-                attachment.url || messageContent,
-                attachment.type || 'document',
-                attachment.url,
-                { source: 'ghl_webhook', contactId }
-              );
-            }
-          } else if (messageContent) {
-            // Queue text message
-            await messageQueue.queueMessage(
-              subAccount.id,
-              phoneNumber,
-              messageContent,
-              'text',
-              null,
-              { source: 'ghl_webhook', contactId }
-            );
-          }
-
-          logger.info(`Queued WhatsApp message to ${phoneNumber} via GHL webhook (drip mode)`);
-        } else {
-          // Direct sending (no queue)
-          if (parsedAttachments && parsedAttachments.length > 0) {
-            for (const attachment of parsedAttachments) {
-              await whatsappService.sendMessage(
-                subAccount.id,
-                phoneNumber,
-                attachment.url || messageContent,
-                attachment.type || 'document',
-                attachment.url
-              );
-            }
-          } else if (messageContent) {
+        if (parsedAttachments && parsedAttachments.length > 0) {
+          for (const attachment of parsedAttachments) {
             await whatsappService.sendMessage(
               subAccount.id,
               phoneNumber,
-              messageContent,
-              'text'
+              attachment.url || messageContent,
+              attachment.type || 'document',
+              attachment.url
             );
           }
-
-          logger.info(`Sent WhatsApp message to ${phoneNumber} via GHL webhook`);
+        } else if (messageContent) {
+          await whatsappService.sendMessage(
+            subAccount.id,
+            phoneNumber,
+            messageContent,
+            'text'
+          );
         }
+
+        logger.info(`Sent WhatsApp message to ${phoneNumber} via GHL webhook`);
       } catch (sendError) {
-        logger.error('Failed to send/queue WhatsApp message from GHL webhook:', sendError);
+        logger.error('Failed to send WhatsApp message from GHL webhook:', sendError);
       }
     }
 
@@ -709,36 +672,6 @@ router.post('/webhook', async (req, res) => {
 router.get('/webhook', (req, res) => {
   // Return 200 for webhook verification
   res.status(200).send('OK');
-});
-
-// ============================================
-// Message Queue / Drip Mode API Endpoints
-// ============================================
-
-// Get queue status for a sub-account
-router.get('/queue/status/:subAccountId', authenticateJWT, async (req, res) => {
-  try {
-    const { subAccountId } = req.params;
-
-    const subAccount = await SubAccount.findOne({
-      where: { id: subAccountId, customerId: req.customer.id }
-    });
-
-    if (!subAccount) {
-      return res.status(404).json({ error: 'Sub-account not found' });
-    }
-
-    const status = messageQueue.getQueueStatus(subAccountId);
-    res.json({
-      success: true,
-      dripModeEnabled: DRIP_MODE_ENABLED,
-      delayMs: DRIP_DELAY_MS,
-      ...status
-    });
-  } catch (error) {
-    logger.error('Queue status error:', error);
-    res.status(500).json({ error: 'Failed to get queue status' });
-  }
 });
 
 // Clear WhatsApp mapping for a phone number (use when contact deleted in GHL)
@@ -815,103 +748,6 @@ router.get('/mappings/:subAccountId', authenticateJWT, async (req, res) => {
   } catch (error) {
     logger.error('Get mappings error:', error);
     res.status(500).json({ error: 'Failed to get mappings' });
-  }
-});
-
-// Set rate limit for a sub-account
-router.post('/queue/rate-limit/:subAccountId', authenticateJWT, async (req, res) => {
-  try {
-    const { subAccountId } = req.params;
-    const { delayBetweenMessages, messagesPerSecond } = req.body;
-
-    const subAccount = await SubAccount.findOne({
-      where: { id: subAccountId, customerId: req.customer.id }
-    });
-
-    if (!subAccount) {
-      return res.status(404).json({ error: 'Sub-account not found' });
-    }
-
-    const config = {};
-    if (delayBetweenMessages) config.delayBetweenMessages = parseInt(delayBetweenMessages);
-    if (messagesPerSecond) config.messagesPerSecond = parseFloat(messagesPerSecond);
-
-    messageQueue.setRateLimit(subAccountId, config);
-
-    res.json({
-      success: true,
-      message: 'Rate limit updated',
-      rateLimit: messageQueue.getQueueStatus(subAccountId).rateLimit
-    });
-  } catch (error) {
-    logger.error('Set rate limit error:', error);
-    res.status(500).json({ error: 'Failed to set rate limit' });
-  }
-});
-
-// Clear queue for a sub-account
-router.post('/queue/clear/:subAccountId', authenticateJWT, async (req, res) => {
-  try {
-    const { subAccountId } = req.params;
-
-    const subAccount = await SubAccount.findOne({
-      where: { id: subAccountId, customerId: req.customer.id }
-    });
-
-    if (!subAccount) {
-      return res.status(404).json({ error: 'Sub-account not found' });
-    }
-
-    const cleared = messageQueue.clearQueue(subAccountId);
-    res.json({
-      success: true,
-      message: `Cleared ${cleared} messages from queue`
-    });
-  } catch (error) {
-    logger.error('Clear queue error:', error);
-    res.status(500).json({ error: 'Failed to clear queue' });
-  }
-});
-
-// Pause queue processing
-router.post('/queue/pause/:subAccountId', authenticateJWT, async (req, res) => {
-  try {
-    const { subAccountId } = req.params;
-
-    const subAccount = await SubAccount.findOne({
-      where: { id: subAccountId, customerId: req.customer.id }
-    });
-
-    if (!subAccount) {
-      return res.status(404).json({ error: 'Sub-account not found' });
-    }
-
-    messageQueue.pauseProcessing(subAccountId);
-    res.json({ success: true, message: 'Queue paused' });
-  } catch (error) {
-    logger.error('Pause queue error:', error);
-    res.status(500).json({ error: 'Failed to pause queue' });
-  }
-});
-
-// Resume queue processing
-router.post('/queue/resume/:subAccountId', authenticateJWT, async (req, res) => {
-  try {
-    const { subAccountId } = req.params;
-
-    const subAccount = await SubAccount.findOne({
-      where: { id: subAccountId, customerId: req.customer.id }
-    });
-
-    if (!subAccount) {
-      return res.status(404).json({ error: 'Sub-account not found' });
-    }
-
-    messageQueue.resumeProcessing(subAccountId);
-    res.json({ success: true, message: 'Queue resumed' });
-  } catch (error) {
-    logger.error('Resume queue error:', error);
-    res.status(500).json({ error: 'Failed to resume queue' });
   }
 });
 
