@@ -1,5 +1,6 @@
 node_modules/
 .env
+STRIPE_KEYS.md
 sessions/
 logs/*.log
 *.log

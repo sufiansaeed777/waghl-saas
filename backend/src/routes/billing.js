@@ -263,41 +263,6 @@ router.get('/portal', authenticateJWT, async (req, res) => {
   }
 });
 
-// Stripe webhook
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
-  // Validate webhook secret is configured
-  if (!process.env.STRIPE_WEBHOOK_SECRET) {
-    logger.error('Webhook error: STRIPE_WEBHOOK_SECRET not configured');
-    return res.status(500).json({ error: 'Webhook not configured' });
-  }
-
-  const sig = req.headers['stripe-signature'];
-  if (!sig) {
-    logger.error('Webhook error: Missing stripe-signature header');
-    return res.status(400).json({ error: 'Missing signature' });
-  }
-
-  try {
-    const Stripe = require('stripe');
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-    const event = stripe.webhooks.constructEvent(
-      req.body,
-      sig,
-      process.env.STRIPE_WEBHOOK_SECRET
-    );
-
-    await stripeService.handleWebhook(event);
-
-    res.json({ received: true });
-  } catch (error) {
-    if (error.type === 'StripeSignatureVerificationError') {
-      logger.error('Webhook signature verification failed:', error.message);
-      return res.status(400).json({ error: 'Invalid signature' });
-    }
-    logger.error('Webhook error:', error);
-    res.status(400).json({ error: 'Webhook error' });
-  }
-});
+// Stripe webhook is handled in index.js at /api/stripe/webhook (before express.json() middleware)
 
 module.exports = router;
