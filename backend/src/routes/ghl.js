@@ -4,6 +4,7 @@ const { authenticateJWT } = require('../middleware/auth');
 const { Customer, SubAccount, WhatsAppMapping } = require('../models');
 const ghlService = require('../services/ghl');
 const whatsappService = require('../services/whatsapp');
+const messageQueue = require('../services/messageQueue');
 const logger = require('../utils/logger');
 
 // Helper to guess media type from URL
@@ -633,11 +634,11 @@ router.post('/webhook', async (req, res) => {
         // Continue anyway - mapping is not critical for sending
       }
 
-      // Send message via WhatsApp
+      // Send message via WhatsApp (drip mode: 5s between messages)
       try {
         if (parsedAttachments && parsedAttachments.length > 0) {
           for (const attachment of parsedAttachments) {
-            await whatsappService.sendMessage(
+            await messageQueue.queueMessage(
               subAccount.id,
               phoneNumber,
               attachment.url || messageContent,
@@ -646,7 +647,7 @@ router.post('/webhook', async (req, res) => {
             );
           }
         } else if (messageContent) {
-          await whatsappService.sendMessage(
+          await messageQueue.queueMessage(
             subAccount.id,
             phoneNumber,
             messageContent,
@@ -654,9 +655,9 @@ router.post('/webhook', async (req, res) => {
           );
         }
 
-        logger.info(`Sent WhatsApp message to ${phoneNumber} via GHL webhook`);
+        logger.info(`Queued WhatsApp message to ${phoneNumber} via GHL webhook (drip mode)`);
       } catch (sendError) {
-        logger.error('Failed to send WhatsApp message from GHL webhook:', sendError);
+        logger.error('Failed to queue WhatsApp message from GHL webhook:', sendError);
       }
     }
 
