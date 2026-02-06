@@ -417,6 +417,9 @@ class WhatsAppService {
         // Skip status messages
         if (msg.key.remoteJid === 'status@broadcast') continue;
 
+        // Skip group messages - only sync private/direct messages to GHL
+        if (msg.key.remoteJid.endsWith('@g.us')) continue;
+
         // Determine if this is an outbound message (sent from WhatsApp, not from GHL)
         const isFromMe = msg.key.fromMe;
 
