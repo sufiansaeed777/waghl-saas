@@ -69,12 +69,22 @@ router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
           // Mark sub-account as paid
           await subAccount.update({ isPaid: true });
 
+          // Check if volume discount threshold crossed (11+ → switch all to €19)
+          const newPaidCount = await SubAccount.count({
+            where: { customerId: req.customer.id, isPaid: true, isGifted: false }
+          });
+          if (newPaidCount >= 11 && process.env.STRIPE_VOLUME_PRICE_ID) {
+            await stripeService.updateAllSubscriptionPrices(req.customer.stripeCustomerId, process.env.STRIPE_VOLUME_PRICE_ID);
+            await req.customer.update({ planType: 'volume' });
+            logger.info(`Volume discount applied: ${newPaidCount} paid sub-accounts, all switched to €19`);
+          }
+
           logger.info(`Auto-subscribed sub-account ${subAccountId} using saved payment method`);
 
           return res.json({
             success: true,
             autoSubscribed: true,
-            message: 'Subscription activated successfully'
+            message: newPaidCount >= 11 ? 'Subscription activated! Volume discount applied to all sub-accounts.' : 'Subscription activated successfully'
           });
         }
       } catch (stripeError) {

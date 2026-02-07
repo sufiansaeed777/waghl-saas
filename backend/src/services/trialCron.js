@@ -64,20 +64,19 @@ class TrialCronService {
 
       for (const customer of expiredTrials) {
         try {
-          // Update customer status
+          // Check if customer has any paid sub-accounts (active Stripe subscriptions)
+          const paidCount = await SubAccount.count({
+            where: { customerId: customer.id, isPaid: true }
+          });
+
+          // If they have paid sub-accounts, mark as active; otherwise inactive
           await customer.update({
-            subscriptionStatus: 'inactive',
-            subscriptionQuantity: 0,
+            subscriptionStatus: paidCount > 0 ? 'active' : 'inactive',
+            subscriptionQuantity: paidCount,
             hasUsedTrial: true
           });
 
-          // Disable all non-gifted sub-accounts
-          const disabledCount = await SubAccount.update(
-            { isPaid: false },
-            { where: { customerId: customer.id, isGifted: false } }
-          );
-
-          logger.info(`Expired trial for customer ${customer.id} (${customer.email}), disabled ${disabledCount[0]} sub-accounts`);
+          logger.info(`Expired trial for customer ${customer.id} (${customer.email}), ${paidCount} paid sub-accounts remain active`);
 
           // Send trial expired email
           emailService.sendTrialExpired(customer.email, customer.name)

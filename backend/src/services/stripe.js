@@ -284,6 +284,18 @@ class StripeService {
             }
           }
 
+          // Check if volume discount threshold crossed (11+ paid sub-accounts → all become €19)
+          if (customer && customer.stripeCustomerId) {
+            const paidCount = await SubAccount.count({
+              where: { customerId: customer.id, isPaid: true, isGifted: false }
+            });
+            if (paidCount >= 11 && process.env.STRIPE_VOLUME_PRICE_ID) {
+              await this.updateAllSubscriptionPrices(customer.stripeCustomerId, process.env.STRIPE_VOLUME_PRICE_ID);
+              await customer.update({ planType: 'volume' });
+              logger.info(`Volume discount applied for customer ${customerId}: ${paidCount} paid sub-accounts, all switched to €19`);
+            }
+          }
+
           // Send subscription activated email with sub-account info
           if (customer) {
             const subAccounts = await SubAccount.findAll({
@@ -357,6 +369,18 @@ class StripeService {
               await subAccount.update({ isPaid: false });
               logger.info(`Subscription deleted for sub-account ${subAccountId}, marked as unpaid`);
 
+              // Check if dropped below volume discount threshold (< 11 → revert all to €29)
+              if (subAccount.customer && subAccount.customer.stripeCustomerId && process.env.STRIPE_PRICE_ID) {
+                const remainingPaid = await SubAccount.count({
+                  where: { customerId: subAccount.customer.id, isPaid: true, isGifted: false }
+                });
+                if (remainingPaid < 11 && remainingPaid > 0) {
+                  await this.updateAllSubscriptionPrices(subAccount.customer.stripeCustomerId, process.env.STRIPE_PRICE_ID);
+                  await subAccount.customer.update({ planType: 'standard' });
+                  logger.info(`Volume discount removed for customer ${subAccount.customer.id}: ${remainingPaid} paid sub-accounts, all switched back to €29`);
+                }
+              }
+
               // Send cancellation email
               emailService.sendSubscriptionCancelled(subAccount.customer.email, subAccount.customer.name)
                 .catch(err => logger.error('Failed to send subscription cancelled email:', err));
@@ -385,6 +409,38 @@ class StripeService {
     } catch (error) {
       logger.error('Handle webhook error:', error);
       throw error;
+    }
+  }
+
+  // Update all active subscription prices for a customer (volume discount switching)
+  async updateAllSubscriptionPrices(stripeCustomerId, targetPriceId) {
+    try {
+      checkStripeConfigured();
+      const subscriptions = await stripe.subscriptions.list({
+        customer: stripeCustomerId,
+        status: 'active',
+        limit: 100
+      });
+
+      let updated = 0;
+      for (const subscription of subscriptions.data) {
+        const item = subscription.items.data[0];
+        if (item && item.price.id !== targetPriceId) {
+          await stripe.subscriptions.update(subscription.id, {
+            items: [{
+              id: item.id,
+              price: targetPriceId
+            }],
+            proration_behavior: 'create_prorations'
+          });
+          updated++;
+        }
+      }
+
+      logger.info(`Updated ${updated} subscriptions to price ${targetPriceId} for customer ${stripeCustomerId}`);
+      return updated;
+    } catch (error) {
+      logger.error('Update subscription prices error:', error);
     }
   }
 
