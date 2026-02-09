@@ -133,8 +133,7 @@ class WhatsAppService {
         },
         // Retry message requests - when decryption fails, request resend
         retryRequestDelayMs: 250,
-        // Mark as offline initially to avoid session conflicts
-        markOnlineOnConnect: false
+        markOnlineOnConnect: true
       });
 
       // Handle connection updates
@@ -819,6 +818,11 @@ class WhatsAppService {
         sentMessage = await socket.sendMessage(jid, videoMessage);
       } else {
         throw new Error(`Unsupported message type: ${messageType}`);
+      }
+
+      // Store outgoing message for getMessage retry callback
+      if (sentMessage) {
+        storeMessage(subAccountId, sentMessage);
       }
 
       // Store message
