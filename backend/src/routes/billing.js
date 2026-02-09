@@ -51,7 +51,7 @@ router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
           const paidCount = await SubAccount.count({
             where: { customerId: req.customer.id, isPaid: true, isGifted: false }
           });
-          const isVolumePrice = paidCount >= 10;
+          const isVolumePrice = (paidCount + 1) >= 11;
           const priceId = isVolumePrice
             ? process.env.STRIPE_VOLUME_PRICE_ID
             : process.env.STRIPE_PRICE_ID;
@@ -69,14 +69,33 @@ router.post('/checkout/:subAccountId', authenticateJWT, async (req, res) => {
           // Mark sub-account as paid
           await subAccount.update({ isPaid: true });
 
+          // Update customer subscription status and ID
+          const isActiveTrial = req.customer.subscriptionStatus === 'trialing' &&
+            req.customer.trialEndsAt &&
+            new Date(req.customer.trialEndsAt) > new Date();
+
+          const customerUpdate = {};
+          if (!req.customer.subscriptionId) {
+            customerUpdate.subscriptionId = subscription.id;
+          }
+          if (!isActiveTrial) {
+            customerUpdate.subscriptionStatus = 'active';
+            customerUpdate.hasUsedTrial = true;
+          }
+          await req.customer.update(customerUpdate);
+
           // Check if volume discount threshold crossed (11+ → switch all to €19)
           const newPaidCount = await SubAccount.count({
             where: { customerId: req.customer.id, isPaid: true, isGifted: false }
           });
-          if (newPaidCount >= 11 && process.env.STRIPE_VOLUME_PRICE_ID) {
-            await stripeService.updateAllSubscriptionPrices(req.customer.stripeCustomerId, process.env.STRIPE_VOLUME_PRICE_ID);
-            await req.customer.update({ planType: 'volume' });
-            logger.info(`Volume discount applied: ${newPaidCount} paid sub-accounts, all switched to €19`);
+          if (newPaidCount >= 11 && process.env.STRIPE_VOLUME_PRICE_ID) { // 11 = VOLUME_THRESHOLD
+            try {
+              await stripeService.updateAllSubscriptionPrices(req.customer.stripeCustomerId, process.env.STRIPE_VOLUME_PRICE_ID);
+              await req.customer.update({ planType: 'volume' });
+              logger.info(`Volume discount applied: ${newPaidCount} paid sub-accounts, all switched to €19`);
+            } catch (priceError) {
+              logger.error('Failed to apply volume discount:', priceError.message);
+            }
           }
 
           logger.info(`Auto-subscribed sub-account ${subAccountId} using saved payment method`);

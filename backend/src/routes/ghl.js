@@ -596,7 +596,8 @@ router.post('/webhook', async (req, res) => {
 
       // Find sub-account by location ID
       const subAccount = await SubAccount.findOne({
-        where: { ghlLocationId: locationId, ghlConnected: true }
+        where: { ghlLocationId: locationId, ghlConnected: true },
+        include: [{ model: Customer, as: 'customer' }]
       });
 
       if (!subAccount) {
@@ -604,8 +605,13 @@ router.post('/webhook', async (req, res) => {
         return res.status(200).json({ success: true });
       }
 
-      // Check payment status
-      if (!subAccount.isPaid) {
+      // Check payment status (bypass during active trial - all sub-accounts work during trial)
+      const isActiveTrial = subAccount.customer &&
+        subAccount.customer.subscriptionStatus === 'trialing' &&
+        subAccount.customer.trialEndsAt &&
+        new Date(subAccount.customer.trialEndsAt) > new Date();
+
+      if (!isActiveTrial && !subAccount.isPaid && !subAccount.isGifted) {
         logger.warn(`Sub-account ${subAccount.id} is not paid, ignoring GHL webhook`);
         return res.status(200).json({ success: true, message: 'Payment required' });
       }

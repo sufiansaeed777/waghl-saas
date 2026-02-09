@@ -3,6 +3,9 @@ const { Customer, SubAccount } = require('../models');
 const emailService = require('./email');
 const logger = require('../utils/logger');
 
+// Volume discount threshold: €19/month at 11+ paid sub-accounts, €29/month for 1-10
+const VOLUME_THRESHOLD = 11;
+
 // Initialize Stripe only if key is provided
 const stripe = process.env.STRIPE_SECRET_KEY
   ? new Stripe(process.env.STRIPE_SECRET_KEY)
@@ -55,9 +58,8 @@ class StripeService {
         where: { customerId: customer.id, isPaid: true, isGifted: false }
       });
 
-      // Determine price based on how many the customer already has
-      // If they have 10+, they get volume discount (€19)
-      const isVolumePrice = paidSubAccountCount >= 10;
+      // Determine price: count doesn't include the one being purchased, so +1
+      const isVolumePrice = (paidSubAccountCount + 1) >= VOLUME_THRESHOLD;
       const priceId = isVolumePrice
         ? process.env.STRIPE_VOLUME_PRICE_ID
         : process.env.STRIPE_PRICE_ID;
@@ -130,8 +132,8 @@ class StripeService {
       const currentQuantity = customer.subscriptionQuantity || 0;
       const newQuantity = currentQuantity + 1;
 
-      // Determine price based on quantity (€29 for 1-10, €19 for 11+)
-      const isVolumePrice = newQuantity >= 11;
+      // Determine price based on quantity
+      const isVolumePrice = newQuantity >= VOLUME_THRESHOLD;
       const priceId = isVolumePrice
         ? process.env.STRIPE_VOLUME_PRICE_ID
         : process.env.STRIPE_PRICE_ID;
@@ -223,9 +225,9 @@ class StripeService {
       });
       const unpaidSubAccountCount = totalSubAccountCount - paidSubAccountCount;
 
-      // Calculate price for next sub-account (volume discount at 11+)
-      const nextPrice = paidSubAccountCount >= 10 ? 19 : 29;
-      const isVolumeEligible = paidSubAccountCount >= 10;
+      // Calculate price for next sub-account
+      const nextPrice = (paidSubAccountCount + 1) >= VOLUME_THRESHOLD ? 19 : 29;
+      const isVolumeEligible = (paidSubAccountCount + 1) >= VOLUME_THRESHOLD;
 
       return {
         paidSubAccountCount,
@@ -259,11 +261,12 @@ class StripeService {
                                   customer.trialEndsAt &&
                                   new Date(customer.trialEndsAt) > new Date();
 
-            // Store subscription ID but DON'T end trial early
-            // Trial expires naturally, paid sub-accounts continue working after
-            const updateData = {
-              subscriptionId: session.subscription
-            };
+            // Store subscription ID only if not already set (per-sub-account model creates multiple subscriptions)
+            // DON'T end trial early - trial expires naturally, paid sub-accounts continue working after
+            const updateData = {};
+            if (!customer.subscriptionId) {
+              updateData.subscriptionId = session.subscription;
+            }
 
             // Only change to 'active' if trial has already ended
             if (!isActiveTrial) {
@@ -289,10 +292,14 @@ class StripeService {
             const paidCount = await SubAccount.count({
               where: { customerId: customer.id, isPaid: true, isGifted: false }
             });
-            if (paidCount >= 11 && process.env.STRIPE_VOLUME_PRICE_ID) {
-              await this.updateAllSubscriptionPrices(customer.stripeCustomerId, process.env.STRIPE_VOLUME_PRICE_ID);
-              await customer.update({ planType: 'volume' });
-              logger.info(`Volume discount applied for customer ${customerId}: ${paidCount} paid sub-accounts, all switched to €19`);
+            if (paidCount >= VOLUME_THRESHOLD && process.env.STRIPE_VOLUME_PRICE_ID) {
+              try {
+                await this.updateAllSubscriptionPrices(customer.stripeCustomerId, process.env.STRIPE_VOLUME_PRICE_ID);
+                await customer.update({ planType: 'volume' });
+                logger.info(`Volume discount applied for customer ${customerId}: ${paidCount} paid sub-accounts, all switched to €19`);
+              } catch (priceError) {
+                logger.error(`Failed to apply volume discount for customer ${customerId}:`, priceError.message);
+              }
             }
           }
 
@@ -374,10 +381,14 @@ class StripeService {
                 const remainingPaid = await SubAccount.count({
                   where: { customerId: subAccount.customer.id, isPaid: true, isGifted: false }
                 });
-                if (remainingPaid < 11 && remainingPaid > 0) {
-                  await this.updateAllSubscriptionPrices(subAccount.customer.stripeCustomerId, process.env.STRIPE_PRICE_ID);
-                  await subAccount.customer.update({ planType: 'standard' });
-                  logger.info(`Volume discount removed for customer ${subAccount.customer.id}: ${remainingPaid} paid sub-accounts, all switched back to €29`);
+                if (remainingPaid < VOLUME_THRESHOLD && remainingPaid > 0) {
+                  try {
+                    await this.updateAllSubscriptionPrices(subAccount.customer.stripeCustomerId, process.env.STRIPE_PRICE_ID);
+                    await subAccount.customer.update({ planType: 'standard' });
+                    logger.info(`Volume discount removed for customer ${subAccount.customer.id}: ${remainingPaid} paid sub-accounts, all switched back to €29`);
+                  } catch (priceError) {
+                    logger.error(`Failed to revert volume discount for customer ${subAccount.customer.id}:`, priceError.message);
+                  }
                 }
               }
 
@@ -441,6 +452,7 @@ class StripeService {
       return updated;
     } catch (error) {
       logger.error('Update subscription prices error:', error);
+      throw error;
     }
   }
 
