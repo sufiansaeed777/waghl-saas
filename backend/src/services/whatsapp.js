@@ -319,20 +319,22 @@ class WhatsAppService {
           reason: lastDisconnect?.error?.message || 'unknown'
         });
 
-        // Send disconnection email (async)
-        try {
-          const customer = await Customer.findByPk(subAccount.customerId);
-          if (customer) {
-            emailService.sendWhatsAppDisconnected(
-              customer.email,
-              customer.name,
-              subAccount.phoneNumber,
-              subAccount.name,
-              lastDisconnect?.error?.message || 'Connection lost'
-            ).catch(err => logger.error('Failed to send WhatsApp disconnected email:', err));
+        // Only send disconnection email for permanent disconnects (not auto-reconnecting)
+        if (!shouldReconnect) {
+          try {
+            const customer = await Customer.findByPk(subAccount.customerId);
+            if (customer) {
+              emailService.sendWhatsAppDisconnected(
+                customer.email,
+                customer.name,
+                subAccount.phoneNumber,
+                subAccount.name,
+                lastDisconnect?.error?.message || 'Connection lost'
+              ).catch(err => logger.error('Failed to send WhatsApp disconnected email:', err));
+            }
+          } catch (emailErr) {
+            logger.error('Error sending WhatsApp disconnected email:', emailErr);
           }
-        } catch (emailErr) {
-          logger.error('Error sending WhatsApp disconnected email:', emailErr);
         }
 
       } else if (connection === 'open') {
