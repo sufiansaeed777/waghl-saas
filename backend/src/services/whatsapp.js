@@ -765,18 +765,6 @@ class WhatsAppService {
         });
       }
 
-      // Send presence updates to prevent "Waiting for this message" placeholder
-      try {
-        await socket.sendPresenceUpdate('available', jid);
-        await socket.presenceSubscribe(jid);
-        await new Promise(resolve => setTimeout(resolve, 500));
-        await socket.sendPresenceUpdate('composing', jid);
-        await new Promise(resolve => setTimeout(resolve, 500));
-      } catch (presenceErr) {
-        // Non-critical - continue sending even if presence fails
-        logger.warn('Presence update failed:', { error: presenceErr.message });
-      }
-
       let sentMessage;
 
       if (messageType === 'text') {
@@ -832,11 +820,6 @@ class WhatsAppService {
       } else {
         throw new Error(`Unsupported message type: ${messageType}`);
       }
-
-      // Clear typing indicator after sending
-      try {
-        await socket.sendPresenceUpdate('paused', jid);
-      } catch (_) {}
 
       // Store message
       const message = await Message.create({
