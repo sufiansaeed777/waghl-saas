@@ -339,10 +339,11 @@ class StripeService {
                   .catch(err => logger.error('Failed to send payment failed email:', err));
               } else if (subscription.status === 'active' && !isCanceledAtPeriodEnd) {
                 // Active subscription - enable this sub-account
-                await subAccount.update({ isPaid: true });
+                await subAccount.update({ isPaid: true, cancelAtPeriodEnd: false });
                 logger.info(`Subscription active for sub-account ${subAccountId}`);
               } else if (isCanceledAtPeriodEnd) {
                 // Scheduled for cancellation - sub-account still works until period end
+                await subAccount.update({ cancelAtPeriodEnd: true });
                 logger.info(`Subscription scheduled for cancellation for sub-account ${subAccountId}`);
                 emailService.sendSubscriptionCancelled(subAccount.customer.email, subAccount.customer.name)
                   .catch(err => logger.error('Failed to send cancellation email:', err));
@@ -373,7 +374,7 @@ class StripeService {
             });
 
             if (subAccount) {
-              await subAccount.update({ isPaid: false });
+              await subAccount.update({ isPaid: false, cancelAtPeriodEnd: false });
               logger.info(`Subscription deleted for sub-account ${subAccountId}, marked as unpaid`);
 
               // Check if dropped below volume discount threshold (< 11 → revert all to €29)

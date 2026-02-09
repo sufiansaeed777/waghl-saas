@@ -258,10 +258,71 @@ router.post('/cancel/:subAccountId', authenticateJWT, async (req, res) => {
       return res.status(404).json({ error: 'No active subscription found for this sub-account' });
     }
 
+    await subAccount.update({ cancelAtPeriodEnd: true });
+
     res.json({ success: true, message: 'Subscription will be cancelled at the end of the billing period' });
   } catch (error) {
     logger.error('Cancel subscription error:', error);
     res.status(500).json({ error: 'Failed to cancel subscription' });
+  }
+});
+
+// Resubscribe - undo pending cancellation for a sub-account
+router.post('/resubscribe/:subAccountId', authenticateJWT, async (req, res) => {
+  try {
+    if (!stripeService.isConfigured()) {
+      return res.status(503).json({ error: 'Billing is not configured' });
+    }
+
+    const subAccountId = req.params.subAccountId;
+
+    const subAccount = await SubAccount.findOne({
+      where: { id: subAccountId, customerId: req.customer.id }
+    });
+
+    if (!subAccount) {
+      return res.status(404).json({ error: 'Sub-account not found' });
+    }
+
+    if (!subAccount.cancelAtPeriodEnd) {
+      return res.status(400).json({ error: 'This sub-account is not pending cancellation' });
+    }
+
+    if (!req.customer.stripeCustomerId) {
+      return res.status(400).json({ error: 'No Stripe customer found' });
+    }
+
+    const Stripe = require('stripe');
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+
+    const subscriptions = await stripe.subscriptions.list({
+      customer: req.customer.stripeCustomerId,
+      status: 'active',
+      limit: 100
+    });
+
+    let resubscribed = false;
+    for (const subscription of subscriptions.data) {
+      if (subscription.metadata?.subAccountId === subAccountId && subscription.cancel_at_period_end) {
+        await stripe.subscriptions.update(subscription.id, {
+          cancel_at_period_end: false
+        });
+        resubscribed = true;
+        logger.info(`Subscription ${subscription.id} resubscribed for sub-account ${subAccountId}`);
+        break;
+      }
+    }
+
+    if (!resubscribed) {
+      return res.status(404).json({ error: 'No cancelling subscription found for this sub-account' });
+    }
+
+    await subAccount.update({ cancelAtPeriodEnd: false });
+
+    res.json({ success: true, message: 'Subscription resumed successfully' });
+  } catch (error) {
+    logger.error('Resubscribe error:', error);
+    res.status(500).json({ error: 'Failed to resubscribe' });
   }
 });
 

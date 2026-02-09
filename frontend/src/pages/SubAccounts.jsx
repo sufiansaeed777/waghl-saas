@@ -3,7 +3,7 @@ import { Link, useSearchParams, useNavigate } from 'react-router-dom'
 import { useAuth } from '../contexts/AuthContext'
 import api from '../services/api'
 import toast from 'react-hot-toast'
-import { Plus, Trash2, Eye, MapPin, Search, Filter, X, XCircle, PlayCircle, Link2, Link2Off } from 'lucide-react'
+import { Plus, Trash2, Eye, MapPin, Search, Filter, X, XCircle, PlayCircle, Link2, Link2Off, RotateCcw } from 'lucide-react'
 
 export default function SubAccounts() {
   const { user } = useAuth()
@@ -127,6 +127,23 @@ export default function SubAccounts() {
       toast.error(error.response?.data?.error || 'Failed to cancel subscription')
     } finally {
       setCancellingId(null)
+    }
+  }
+
+  // Resubscribe - undo pending cancellation
+  const [resubscribingId, setResubscribingId] = useState(null)
+
+  const handleResubscribe = async (subAccountId, name) => {
+    setResubscribingId(subAccountId)
+    try {
+      const { data } = await api.post(`/billing/resubscribe/${subAccountId}`)
+      toast.success(data.message || 'Subscription resumed')
+      fetchSubAccounts()
+      fetchSubscriptionInfo()
+    } catch (error) {
+      toast.error(error.response?.data?.error || 'Failed to resubscribe')
+    } finally {
+      setResubscribingId(null)
     }
   }
 
@@ -384,6 +401,10 @@ export default function SubAccounts() {
                         <span className="text-sm px-2 py-1 rounded bg-blue-100 text-blue-700">
                           Trial
                         </span>
+                      ) : isPaid && account.cancelAtPeriodEnd ? (
+                        <span className="text-sm px-2 py-1 rounded bg-orange-100 text-orange-700">
+                          Cancelling
+                        </span>
                       ) : isPaid ? (
                         <span className="text-sm px-2 py-1 rounded bg-green-100 text-green-700">
                           Active
@@ -417,8 +438,19 @@ export default function SubAccounts() {
                             <PlayCircle size={18} />
                           </button>
                         )}
-                        {/* Cross = Cancel subscription (for paid) */}
-                        {!isFree && isPaid && (
+                        {/* Resubscribe (for pending cancellation) */}
+                        {!isFree && isPaid && account.cancelAtPeriodEnd && (
+                          <button
+                            onClick={() => handleResubscribe(account.id, account.name)}
+                            disabled={resubscribingId === account.id}
+                            className="p-2 text-green-500 hover:bg-green-50 rounded disabled:opacity-50"
+                            title="Resubscribe"
+                          >
+                            <RotateCcw size={18} />
+                          </button>
+                        )}
+                        {/* Cancel subscription (for active paid) */}
+                        {!isFree && isPaid && !account.cancelAtPeriodEnd && (
                           <button
                             onClick={() => handleCancelSubscription(account.id, account.name)}
                             disabled={cancellingId === account.id}

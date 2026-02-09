@@ -674,7 +674,11 @@
     // Show location picker UI
     function showLocationPicker(locations) {
       if (locations.length === 0) {
-        showError('No GHL locations found. Click below to connect your GHL location.', true);
+        // Show GHL disconnected error instead of generic "no locations" error
+        showSubscriptionError({
+          errorCode: 'GHL_DISCONNECTED',
+          message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.'
+        });
         return;
       }
 
@@ -761,7 +765,11 @@
         }
         loadStatus();
       } catch (err) {
-        showError(err.message || 'Failed to load. Please try again.');
+        // Show GHL disconnected error for any failure
+        showSubscriptionError({
+          errorCode: 'GHL_DISCONNECTED',
+          message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.'
+        });
       }
     }
 
@@ -814,7 +822,18 @@
           console.log('Step 2: Fetching fresh token for locationId:', locationId);
           const res = await fetch(apiBase + '/api/embed/token-by-location/' + locationId);
           if (!res.ok) {
-            const data = await res.json();
+            const data = await res.json().catch(() => ({}));
+
+            // Handle GHL disconnected or payment errors - show proper error, don't fall through
+            if (res.status === 403 && data.errorCode === 'GHL_DISCONNECTED') {
+              showSubscriptionError(data);
+              return;
+            }
+            if (res.status === 402) {
+              showSubscriptionError(data);
+              return;
+            }
+
             throw new Error(data.error || 'Location not found');
           }
           const data = await res.json();
@@ -863,24 +882,15 @@
       showLocationPicker(locations);
     }
 
-    function showError(message, showConnectButton = true) {
+    function showError(message) {
       document.getElementById('content').innerHTML = `
         <div class="error-box">
           <h1>Setup Required</h1>
           <p>${message}</p>
-          ${showConnectButton ? `
-            <button class="btn btn-primary" style="margin-top: 20px;" onclick="openGhlOAuth()">
-              Connect GHL Location
-            </button>
-            <p style="margin-top: 12px; font-size: 12px; color: #6b7280;">
-              This will open GHL authorization in a new window
-            </p>
-          ` : `
-            <div class="info-box" style="margin-top: 16px;">
-              <p><strong>To fix this:</strong><br>
-              Please contact your administrator to configure this location.</p>
-            </div>
-          `}
+          <div class="info-box" style="margin-top: 16px;">
+            <p><strong>To fix this:</strong><br>
+            Please contact your administrator to configure this location.</p>
+          </div>
         </div>
       `;
     }
@@ -1137,7 +1147,7 @@
           clearFromStorage(locationId);
           showSubscriptionError({
             errorCode: 'GHL_DISCONNECTED',
-            message: 'GoHighLevel has been disconnected successfully.'
+            message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.'
           });
         } else if (res.status === 401) {
           console.log('Token invalid on GHL disconnect, clearing cache...');

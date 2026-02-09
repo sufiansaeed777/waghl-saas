@@ -53,6 +53,11 @@ module.exports = (sequelize) => {
       type: DataTypes.BOOLEAN,
       defaultValue: false
     },
+    // Subscription scheduled for cancellation at end of billing period
+    cancelAtPeriodEnd: {
+      type: DataTypes.BOOLEAN,
+      defaultValue: false
+    },
     // GHL Integration fields
     ghlLocationId: {
       type: DataTypes.STRING,
