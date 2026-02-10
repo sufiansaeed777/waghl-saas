@@ -577,15 +577,17 @@ router.post('/webhook', async (req, res) => {
         timestamp
       } = payload;
 
-      // Skip old messages - only process messages from the last 2 minutes
+      // Skip old messages - only process messages from the last 30 seconds
       // This prevents GHL from replaying old conversation history as new messages
       const messageDate = dateAdded || timestamp || payload.date || payload.createdAt;
-      if (messageDate) {
-        const messageAge = Date.now() - new Date(messageDate).getTime();
-        if (messageAge > 30 * 1000) { // older than 30 seconds
-          logger.info('Skipping old GHL message:', { messageDate, ageMs: messageAge, phone: phone || to });
-          return res.status(200).json({ success: true, message: 'Old message skipped' });
-        }
+      if (!messageDate) {
+        logger.warn('GHL message has no timestamp, skipping as safety measure:', { phone: phone || to });
+        return res.status(200).json({ success: true, message: 'No timestamp, skipped' });
+      }
+      const messageAge = Date.now() - new Date(messageDate).getTime();
+      if (messageAge > 30 * 1000) { // older than 30 seconds
+        logger.info('Skipping old GHL message:', { messageDate, ageMs: messageAge, phone: phone || to });
+        return res.status(200).json({ success: true, message: 'Old message skipped' });
       }
 
       const phoneNumber = phone || to;
