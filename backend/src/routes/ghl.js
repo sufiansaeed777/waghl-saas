@@ -485,7 +485,7 @@ router.post('/uninstall/:subAccountId', authenticateJWT, async (req, res) => {
 });
 
 // GHL Webhook - receives outbound messages and other events from GHL
-// Handles: OutboundMessage, SMS, ContactDelete, ContactUpdate
+// Handles: OutboundMessage, SMS, ContactDelete, ContactUpdate, Uninstall
 router.post('/webhook', async (req, res) => {
   try {
     const payload = req.body;
@@ -493,6 +493,25 @@ router.post('/webhook', async (req, res) => {
 
     // Verify webhook (GHL sends various event types)
     const eventType = payload.type || payload.event;
+
+    // Handle app uninstall - GHL notifies when app is removed from a location
+    if (eventType === 'Uninstall' || eventType === 'uninstall' || eventType === 'app.uninstalled') {
+      const locationId = payload.locationId || payload.location_id;
+      logger.info('GHL app uninstall event received:', { locationId });
+
+      if (locationId) {
+        const subAccount = await SubAccount.findOne({ where: { ghlLocationId: locationId } });
+        if (subAccount) {
+          await subAccount.update({
+            ghlAccessToken: null,
+            ghlRefreshToken: null
+          });
+          logger.info(`Cleared GHL tokens for sub-account ${subAccount.id} (${subAccount.name}) after app uninstall from location ${locationId}`);
+        }
+      }
+
+      return res.status(200).json({ success: true, message: 'Uninstall handled' });
+    }
 
     // Handle contact deletion - clear WhatsAppMapping when contact is deleted in GHL
     if (eventType === 'ContactDelete' || eventType === 'contact.delete') {
