@@ -502,11 +502,21 @@ router.post('/webhook', async (req, res) => {
       if (locationId) {
         const subAccount = await SubAccount.findOne({ where: { ghlLocationId: locationId } });
         if (subAccount) {
+          // Disconnect WhatsApp first
+          try {
+            await whatsappService.disconnect(subAccount.id);
+            logger.info(`WhatsApp disconnected for sub-account ${subAccount.id} due to GHL uninstall`);
+          } catch (waErr) {
+            logger.error(`Failed to disconnect WhatsApp during uninstall:`, waErr.message);
+          }
+
+          // Clear all GHL data
           await subAccount.update({
             ghlAccessToken: null,
-            ghlRefreshToken: null
+            ghlRefreshToken: null,
+            ghlLocationId: null
           });
-          logger.info(`Cleared GHL tokens for sub-account ${subAccount.id} (${subAccount.name}) after app uninstall from location ${locationId}`);
+          logger.info(`Fully disconnected sub-account ${subAccount.id} (${subAccount.name}) after app uninstall from location ${locationId}`);
         }
       }
 
