@@ -553,7 +553,7 @@ router.post('/webhook', async (req, res) => {
       const messageDate = dateAdded || timestamp || payload.date || payload.createdAt;
       if (messageDate) {
         const messageAge = Date.now() - new Date(messageDate).getTime();
-        if (messageAge > 2 * 60 * 1000) { // older than 2 minutes
+        if (messageAge > 30 * 1000) { // older than 30 seconds
           logger.info('Skipping old GHL message:', { messageDate, ageMs: messageAge, phone: phone || to });
           return res.status(200).json({ success: true, message: 'Old message skipped' });
         }
