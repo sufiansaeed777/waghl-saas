@@ -543,8 +543,21 @@ router.post('/webhook', async (req, res) => {
         message,
         body,
         messageBody,
-        attachments
+        attachments,
+        dateAdded,
+        timestamp
       } = payload;
+
+      // Skip old messages - only process messages from the last 2 minutes
+      // This prevents GHL from replaying old conversation history as new messages
+      const messageDate = dateAdded || timestamp || payload.date || payload.createdAt;
+      if (messageDate) {
+        const messageAge = Date.now() - new Date(messageDate).getTime();
+        if (messageAge > 2 * 60 * 1000) { // older than 2 minutes
+          logger.info('Skipping old GHL message:', { messageDate, ageMs: messageAge, phone: phone || to });
+          return res.status(200).json({ success: true, message: 'Old message skipped' });
+        }
+      }
 
       const phoneNumber = phone || to;
       const messageContent = message || body || messageBody;
@@ -586,7 +599,8 @@ router.post('/webhook', async (req, res) => {
         attachmentsType: typeof attachments,
         parsedAttachmentsCount: parsedAttachments.length,
         parsedAttachments: parsedAttachments.length > 0 ? JSON.stringify(parsedAttachments).substring(0, 500) : null,
-        phone: phoneNumber
+        phone: phoneNumber,
+        messageDate: dateAdded || timestamp || payload.date || payload.createdAt || 'none'
       });
 
       if (!locationId || !phoneNumber) {
