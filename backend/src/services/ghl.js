@@ -3,7 +3,7 @@ const { Customer, SubAccount } = require('../models');
 const logger = require('../utils/logger');
 
 const GHL_API_BASE = 'https://services.leadconnectorhq.com';
-const GHL_AUTH_URL = 'https://marketplace.leadconnectorhq.com/oauth/chooselocation';
+const GHL_AUTH_URL = 'https://marketplace.gohighlevel.com/oauth/chooselocation';
 const GHL_TOKEN_URL = `${GHL_API_BASE}/oauth/token`;
 
 class GHLService {
