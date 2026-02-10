@@ -11,7 +11,7 @@ class GHLService {
     this.clientId = process.env.GHL_CLIENT_ID;
     this.clientSecret = process.env.GHL_CLIENT_SECRET;
     this.redirectUri = process.env.GHL_REDIRECT_URI;
-    this.scopes = process.env.GHL_SCOPES || 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write locations.readonly';
+    this.scopes = process.env.GHL_SCOPES || 'contacts.readonly contacts.write conversations.readonly conversations.write conversations/message.readonly conversations/message.write locations.readonly oauth.write oauth.readonly';
   }
 
   // Generate OAuth authorization URL
@@ -22,6 +22,8 @@ class GHLService {
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
       .replace(/=/g, '');
+    // Extract version_id from client_id (base ID without suffix)
+    const versionId = this.clientId ? this.clientId.split('-')[0] : '';
     const params = new URLSearchParams({
       response_type: 'code',
       client_id: this.clientId,
@@ -29,6 +31,9 @@ class GHLService {
       scope: this.scopes,
       state
     });
+    if (versionId) {
+      params.append('version_id', versionId);
+    }
     return `${GHL_AUTH_URL}?${params.toString()}`;
   }
 
