@@ -514,7 +514,8 @@ router.post('/webhook', async (req, res) => {
           await subAccount.update({
             ghlAccessToken: null,
             ghlRefreshToken: null,
-            ghlLocationId: null
+            ghlLocationId: null,
+            ghlConnected: false
           });
           logger.info(`Fully disconnected sub-account ${subAccount.id} (${subAccount.name}) after app uninstall from location ${locationId}`);
         }
