@@ -495,7 +495,7 @@ router.post('/webhook', async (req, res) => {
     const eventType = payload.type || payload.event;
 
     // Handle app uninstall - GHL notifies when app is removed from a location
-    if (eventType === 'Uninstall' || eventType === 'uninstall' || eventType === 'app.uninstalled') {
+    if (eventType === 'UNINSTALL' || eventType === 'Uninstall' || eventType === 'uninstall' || eventType === 'app.uninstalled') {
       const locationId = payload.locationId || payload.location_id;
       logger.info('GHL app uninstall event received:', { locationId });
 
