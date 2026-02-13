@@ -20,9 +20,11 @@ const qrCodes = new Map();  // Stores { qrCode, timestamp } for each subAccountI
 // This is CRITICAL for handling decryption failures (Bad MAC errors)
 const msgRetryCounterCache = new Map();
 
-// Track message IDs sent by our sendMessage function (via queue/API)
-// These should NOT be synced back to GHL (GHL already knows about them or they'd create duplicates)
-const sentByUs = new Set();
+// Track phones with pending sends from our sendMessage function
+// Marked BEFORE socket.sendMessage so messages.upsert handler can detect GHL-originated outbound
+// Key: "subAccountId:phone" -> timestamp
+const pendingSends = new Map();
+const PENDING_SEND_TTL_MS = 30000; // 30 seconds
 
 // In-memory message store for getMessage callback
 // Stores recent messages so Baileys can retry decryption
@@ -678,12 +680,27 @@ class WhatsAppService {
         // Sync to GHL using resolved phone number (async, don't wait)
         // Pass pushName and isLID flag for name-based matching when phone number can't be resolved
         if (isFromMe) {
-          // Do NOT sync outbound messages to GHL
-          // Messages sent from GHL: GHL already has them (syncing back creates duplicates)
-          // Messages sent from WhatsApp directly: not critical for GHL conversation view
-          logger.info('Skipping GHL sync for outbound message (isFromMe):', {
-            subAccountId, phone: phoneForSync
-          });
+          // Check if this outbound was sent by our sendMessage function
+          const cleanPhoneCheck = phoneForSync.replace(/\D/g, '');
+          const pendingKey = `${subAccountId}:${cleanPhoneCheck}`;
+          if (pendingSends.has(pendingKey)) {
+            // Sent by our app (from GHL or API) - GHL already has it, skip sync
+            logger.info('Skipping GHL sync for app-originated outbound:', {
+              subAccountId, phone: phoneForSync
+            });
+          } else {
+            // Sent from another device (WhatsApp phone/web/desktop) - sync to GHL
+            logger.info('Syncing other-device outbound to GHL:', {
+              subAccountId, phone: phoneForSync
+            });
+            ghlService.syncMessageToGHL(
+              subAccount,
+              subAccount.phoneNumber || '',   // from (our number)
+              phoneForSync,                   // to (contact)
+              content,
+              'outbound'
+            ).catch(err => logger.error('GHL sync error:', err));
+          }
         } else {
           // Inbound message
           ghlService.syncMessageToGHL(
@@ -767,6 +784,12 @@ class WhatsAppService {
         });
       }
 
+      // Mark this phone as pending send BEFORE socket.sendMessage
+      // so messages.upsert handler knows this is from our app (not another device)
+      const pendingKey = `${subAccountId}:${cleanPhone}`;
+      pendingSends.set(pendingKey, Date.now());
+      setTimeout(() => pendingSends.delete(pendingKey), PENDING_SEND_TTL_MS);
+
       let sentMessage;
 
       if (messageType === 'text') {
@@ -826,11 +849,6 @@ class WhatsAppService {
       // Store outgoing message for getMessage retry callback
       if (sentMessage) {
         storeMessage(subAccountId, sentMessage);
-        // Track this message ID so the isFromMe handler skips GHL sync
-        if (sentMessage.key?.id) {
-          sentByUs.add(sentMessage.key.id);
-          setTimeout(() => sentByUs.delete(sentMessage.key.id), 60000); // cleanup after 60s
-        }
       }
 
       // Store message
