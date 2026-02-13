@@ -10,7 +10,7 @@ const logger = require('../utils/logger');
 // Track when GHL was connected per location to skip old message replays
 // GHL replays all old outbound messages when app is first installed on a location
 const ghlConnectionCooldowns = new Map();
-const GHL_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
+const GHL_COOLDOWN_MS = 15 * 1000; // 15 seconds - replay burst completes within seconds
 
 // Helper to guess media type from URL
 function guessMediaType(url) {
