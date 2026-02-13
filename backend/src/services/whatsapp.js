@@ -20,6 +20,10 @@ const qrCodes = new Map();  // Stores { qrCode, timestamp } for each subAccountI
 // This is CRITICAL for handling decryption failures (Bad MAC errors)
 const msgRetryCounterCache = new Map();
 
+// Track message IDs sent by our sendMessage function (via queue/API)
+// These should NOT be synced back to GHL (GHL already knows about them or they'd create duplicates)
+const sentByUs = new Set();
+
 // In-memory message store for getMessage callback
 // Stores recent messages so Baileys can retry decryption
 const messageStore = new Map();
@@ -674,14 +678,14 @@ class WhatsAppService {
         // Sync to GHL using resolved phone number (async, don't wait)
         // Pass pushName and isLID flag for name-based matching when phone number can't be resolved
         if (isFromMe) {
-          // Check if this message originated from a GHL webhook (to prevent feedback loop)
-          // GHL webhook → WhatsApp send → Baileys isFromMe → sync back to GHL → another webhook → loop
-          if (messageQueue.isGhlOrigin(subAccountId, phoneForSync)) {
-            logger.info('Skipping GHL sync for outbound message (originated from GHL webhook):', {
-              subAccountId, phone: phoneForSync
+          // Check if this message was sent by our sendMessage function (from GHL webhook or API)
+          // If so, skip GHL sync to prevent duplicates (GHL already has the outbound message)
+          if (sentByUs.has(msg.key.id)) {
+            logger.info('Skipping GHL sync for outbound message (sent by our app):', {
+              subAccountId, phone: phoneForSync, messageId: msg.key.id
             });
           } else {
-            // Outbound message sent directly from WhatsApp (not from GHL)
+            // Outbound message sent directly from WhatsApp phone (not from our app)
             ghlService.syncMessageToGHL(
               subAccount,
               subAccount.phoneNumber || '',  // from (our number)
@@ -834,6 +838,11 @@ class WhatsAppService {
       // Store outgoing message for getMessage retry callback
       if (sentMessage) {
         storeMessage(subAccountId, sentMessage);
+        // Track this message ID so the isFromMe handler skips GHL sync
+        if (sentMessage.key?.id) {
+          sentByUs.add(sentMessage.key.id);
+          setTimeout(() => sentByUs.delete(sentMessage.key.id), 60000); // cleanup after 60s
+        }
       }
 
       // Store message
