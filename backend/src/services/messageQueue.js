@@ -60,6 +60,7 @@ class MessageQueueService {
   markGhlOrigin(subAccountId, phoneNumber) {
     const key = `${subAccountId}:${phoneNumber}`;
     ghlOriginMessages.set(key, Date.now());
+    logger.info('markGhlOrigin:', { key, mapSize: ghlOriginMessages.size });
     // Auto-cleanup after TTL
     setTimeout(() => ghlOriginMessages.delete(key), GHL_ORIGIN_TTL_MS);
   }
@@ -68,6 +69,8 @@ class MessageQueueService {
   isGhlOrigin(subAccountId, phoneNumber) {
     const key = `${subAccountId}:${phoneNumber}`;
     const timestamp = ghlOriginMessages.get(key);
+    const result = timestamp && (Date.now() - timestamp <= GHL_ORIGIN_TTL_MS);
+    logger.info('isGhlOrigin check:', { key, found: !!timestamp, ageMs: timestamp ? Date.now() - timestamp : null, result: !!result, mapSize: ghlOriginMessages.size });
     if (!timestamp) return false;
     if (Date.now() - timestamp > GHL_ORIGIN_TTL_MS) {
       ghlOriginMessages.delete(key);
