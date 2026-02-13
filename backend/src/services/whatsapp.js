@@ -24,7 +24,7 @@ const msgRetryCounterCache = new Map();
 // Marked BEFORE socket.sendMessage so messages.upsert handler can detect GHL-originated outbound
 // Key: "subAccountId:phone" -> timestamp
 const pendingSends = new Map();
-const PENDING_SEND_TTL_MS = 30000; // 30 seconds
+const PENDING_SEND_TTL_MS = 10000; // 10 seconds (messages.upsert fires within ~3s)
 
 // In-memory message store for getMessage callback
 // Stores recent messages so Baileys can retry decryption
