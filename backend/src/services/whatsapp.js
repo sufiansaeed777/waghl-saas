@@ -892,14 +892,9 @@ class WhatsAppService {
         timestamp: new Date().toISOString()
       });
 
-      // Sync to GHL (async, don't wait)
-      ghlService.syncMessageToGHL(
-        subAccount,
-        subAccount.phoneNumber || '',
-        cleanPhone,
-        content,
-        'outbound'
-      ).catch(err => logger.error('GHL sync error:', err));
+      // Do NOT sync outbound to GHL from sendMessage
+      // Messages from GHL: GHL already has them (syncing back creates duplicates)
+      // Messages from direct API: not critical for GHL conversation view
 
       return message;
 
