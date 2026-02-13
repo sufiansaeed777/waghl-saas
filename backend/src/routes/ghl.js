@@ -7,10 +7,19 @@ const whatsappService = require('../services/whatsapp');
 const messageQueue = require('../services/messageQueue');
 const logger = require('../utils/logger');
 
-// Track when GHL was connected per location to skip old message replays
-// GHL replays all old outbound messages when app is first installed on a location
-const ghlConnectionCooldowns = new Map();
-const GHL_COOLDOWN_MS = 15 * 1000; // 15 seconds - replay burst completes within seconds
+// Track processed GHL message IDs to prevent replay duplicates
+// GHL replays old outbound messages when app is first installed on a location
+const processedMessageIds = new Map(); // messageId -> timestamp
+const MESSAGE_ID_TTL = 24 * 60 * 60 * 1000; // Keep IDs for 24 hours
+const MESSAGE_ID_CLEANUP_INTERVAL = 60 * 60 * 1000; // Clean up every hour
+
+// Periodic cleanup of old message IDs
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, ts] of processedMessageIds) {
+    if (now - ts > MESSAGE_ID_TTL) processedMessageIds.delete(id);
+  }
+}, MESSAGE_ID_CLEANUP_INTERVAL);
 
 // Helper to guess media type from URL
 function guessMediaType(url) {
@@ -297,20 +306,14 @@ router.get('/callback', async (req, res) => {
     }
 
     // Update sub-account with GHL tokens
-    const finalLocationId = locationId || subAccount.ghlLocationId;
     await subAccount.update({
       ghlAccessToken: tokenData.access_token,
       ghlRefreshToken: tokenData.refresh_token,
       ghlTokenExpiresAt: new Date(Date.now() + (tokenData.expires_in * 1000)),
-      ghlLocationId: finalLocationId,
+      ghlLocationId: locationId || subAccount.ghlLocationId,
       ghlConnected: true
     });
 
-    // Set cooldown to skip old message replays from GHL
-    if (finalLocationId) {
-      ghlConnectionCooldowns.set(finalLocationId, Date.now());
-      logger.info(`GHL cooldown set for location ${finalLocationId} - skipping outbound webhooks for 2 minutes`);
-    }
 
     // Fetch location details from GHL to get the actual location name
     try {
@@ -587,21 +590,19 @@ router.post('/webhook', async (req, res) => {
         messageBody,
         attachments,
         dateAdded,
-        timestamp
+        timestamp,
+        messageId
       } = payload;
 
-      // Skip old message replays after GHL connection
-      // When GHL app is installed, it replays all old outbound messages as webhooks
-      if (locationId && ghlConnectionCooldowns.has(locationId)) {
-        const connectedAt = ghlConnectionCooldowns.get(locationId);
-        const elapsed = Date.now() - connectedAt;
-        if (elapsed < GHL_COOLDOWN_MS) {
-          logger.info('Skipping GHL message during cooldown:', { locationId, elapsedMs: elapsed, phone: phone || to });
-          return res.status(200).json({ success: true, message: 'Cooldown active, skipped' });
-        } else {
-          // Cooldown expired, clean up
-          ghlConnectionCooldowns.delete(locationId);
+      // Deduplicate messages using messageId
+      // GHL replays old outbound messages when app is installed — same messageId comes again
+      const msgId = messageId || payload.messageId;
+      if (msgId) {
+        if (processedMessageIds.has(msgId)) {
+          logger.info('Skipping duplicate GHL message:', { messageId: msgId, phone: phone || to });
+          return res.status(200).json({ success: true, message: 'Duplicate skipped' });
         }
+        processedMessageIds.set(msgId, Date.now());
       }
 
       // Also skip messages with old timestamps if present
