@@ -7,19 +7,12 @@ const whatsappService = require('../services/whatsapp');
 const messageQueue = require('../services/messageQueue');
 const logger = require('../utils/logger');
 
-// Track processed GHL message IDs to prevent replay duplicates
-// GHL replays old outbound messages when app is first installed on a location
-const processedMessageIds = new Map(); // messageId -> timestamp
-const MESSAGE_ID_TTL = 24 * 60 * 60 * 1000; // Keep IDs for 24 hours
-const MESSAGE_ID_CLEANUP_INTERVAL = 60 * 60 * 1000; // Clean up every hour
-
-// Periodic cleanup of old message IDs
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, ts] of processedMessageIds) {
-    if (now - ts > MESSAGE_ID_TTL) processedMessageIds.delete(id);
-  }
-}, MESSAGE_ID_CLEANUP_INTERVAL);
+// Burst detector - GHL replays old outbound messages in rapid succession when app is installed
+// Real messages come one at a time, replays come as a flood (10+ in seconds)
+const locationMessageCounts = new Map(); // locationId -> { count, firstSeen, blocked }
+const BURST_WINDOW_MS = 5000; // 5-second window
+const BURST_THRESHOLD = 3; // More than 3 messages in 5 seconds = replay burst
+const BURST_BLOCK_MS = 30000; // Block for 30 seconds once burst is detected
 
 // Helper to guess media type from URL
 function guessMediaType(url) {
@@ -590,19 +583,39 @@ router.post('/webhook', async (req, res) => {
         messageBody,
         attachments,
         dateAdded,
-        timestamp,
-        messageId
+        timestamp
       } = payload;
 
-      // Deduplicate messages using messageId
-      // GHL replays old outbound messages when app is installed — same messageId comes again
-      const msgId = messageId || payload.messageId;
-      if (msgId) {
-        if (processedMessageIds.has(msgId)) {
-          logger.info('Skipping duplicate GHL message:', { messageId: msgId, phone: phone || to });
-          return res.status(200).json({ success: true, message: 'Duplicate skipped' });
+      // Burst detector - skip rapid-fire replays of old messages
+      // GHL sends dozens of old messages in seconds when app is installed
+      // Real user messages come one at a time
+      if (locationId) {
+        const now = Date.now();
+        let burst = locationMessageCounts.get(locationId);
+
+        if (burst && burst.blocked && (now - burst.blockedAt < BURST_BLOCK_MS)) {
+          // Currently in burst-block mode
+          logger.info('Skipping GHL message (burst detected):', { locationId, phone: phone || to });
+          return res.status(200).json({ success: true, message: 'Burst detected, skipped' });
         }
-        processedMessageIds.set(msgId, Date.now());
+
+        if (!burst || (now - burst.firstSeen > BURST_WINDOW_MS)) {
+          // Start new window
+          burst = { count: 1, firstSeen: now, blocked: false };
+        } else {
+          burst.count++;
+        }
+
+        if (burst.count > BURST_THRESHOLD && !burst.blocked) {
+          // Burst detected — block this location temporarily
+          burst.blocked = true;
+          burst.blockedAt = now;
+          locationMessageCounts.set(locationId, burst);
+          logger.warn('GHL message burst detected, blocking location temporarily:', { locationId, count: burst.count });
+          return res.status(200).json({ success: true, message: 'Burst detected, skipped' });
+        }
+
+        locationMessageCounts.set(locationId, burst);
       }
 
       // Also skip messages with old timestamps if present
