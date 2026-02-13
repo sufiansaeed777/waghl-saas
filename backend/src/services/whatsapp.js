@@ -678,27 +678,12 @@ class WhatsAppService {
         // Sync to GHL using resolved phone number (async, don't wait)
         // Pass pushName and isLID flag for name-based matching when phone number can't be resolved
         if (isFromMe) {
-          // Check if this message originated from a GHL webhook (to prevent duplicates)
-          // isGhlOrigin is set BEFORE sending (in queueMessage), so no race condition
-          // sentByUs is set AFTER sending, used as backup
-          if (messageQueue.isGhlOrigin(subAccountId, phoneForSync) || sentByUs.has(msg.key.id)) {
-            logger.info('Skipping GHL sync for outbound message (sent by our app):', {
-              subAccountId, phone: phoneForSync, messageId: msg.key.id,
-              ghlOrigin: messageQueue.isGhlOrigin(subAccountId, phoneForSync),
-              sentByUs: sentByUs.has(msg.key.id)
-            });
-          } else {
-            // Outbound message sent directly from WhatsApp phone (not from our app)
-            ghlService.syncMessageToGHL(
-              subAccount,
-              subAccount.phoneNumber || '',  // from (our number)
-              phoneForSync,                   // to (contact)
-              content,
-              'outbound',
-              resolvedContactName,            // Contact name from mapping (for LID resolution)
-              isLID
-            ).catch(err => logger.error('GHL sync error (outbound from WhatsApp):', err));
-          }
+          // Do NOT sync outbound messages to GHL
+          // Messages sent from GHL: GHL already has them (syncing back creates duplicates)
+          // Messages sent from WhatsApp directly: not critical for GHL conversation view
+          logger.info('Skipping GHL sync for outbound message (isFromMe):', {
+            subAccountId, phone: phoneForSync
+          });
         } else {
           // Inbound message
           ghlService.syncMessageToGHL(
