@@ -11,11 +11,6 @@ const logger = require('../utils/logger');
 // to filter out old replayed messages that GHL sends when app is installed on a location
 const REPLAY_CHECK_WINDOW_MS = 60 * 1000; // 1 minute after connection
 
-// Per-phone cooldown to prevent GHL webhook loops
-// After sending a message to a phone via GHL webhook, block re-sends to same phone for 10s
-const recentGhlSends = new Map(); // "subAccountId:phone" -> timestamp
-const GHL_SEND_COOLDOWN_MS = 10000; // 10 seconds
-
 // Helper to guess media type from URL
 function guessMediaType(url) {
   if (!url) return 'document';
@@ -744,16 +739,6 @@ router.post('/webhook', async (req, res) => {
         // Continue anyway - mapping is not critical for sending
       }
 
-      // Per-phone cooldown - prevent GHL webhook loop sending to same phone rapidly
-      const sendKey = `${subAccount.id}:${cleanPhone}`;
-      const lastSend = recentGhlSends.get(sendKey);
-      if (lastSend && (Date.now() - lastSend < GHL_SEND_COOLDOWN_MS)) {
-        logger.info('Skipping GHL message (cooldown active for phone):', {
-          phone: phoneNumber, cooldownRemaining: GHL_SEND_COOLDOWN_MS - (Date.now() - lastSend)
-        });
-        return res.status(200).json({ success: true, message: 'Cooldown active' });
-      }
-
       // Send message via WhatsApp (drip mode: 5s between messages)
       try {
         if (parsedAttachments && parsedAttachments.length > 0) {
@@ -774,10 +759,6 @@ router.post('/webhook', async (req, res) => {
             'text'
           );
         }
-
-        // Mark this phone as recently sent to prevent loop
-        recentGhlSends.set(sendKey, Date.now());
-        setTimeout(() => recentGhlSends.delete(sendKey), GHL_SEND_COOLDOWN_MS);
 
         logger.info(`Queued WhatsApp message to ${phoneNumber} via GHL webhook (drip mode)`);
       } catch (sendError) {
