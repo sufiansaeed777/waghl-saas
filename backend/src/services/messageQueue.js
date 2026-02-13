@@ -7,6 +7,11 @@ const MAX_ATTEMPTS = 3;
 const queues = new Map();
 const processing = new Map();
 
+// Track messages that originated from GHL webhooks to prevent feedback loops
+// Key: "subAccountId:phoneNumber" -> timestamp
+const ghlOriginMessages = new Map();
+const GHL_ORIGIN_TTL_MS = 30000; // 30 seconds
+
 class MessageQueueService {
   constructor() {
     this.whatsappService = null;
@@ -43,8 +48,32 @@ class MessageQueueService {
       queueLength: queues.get(subAccountId).length
     });
 
+    // Mark this phone as GHL-originated to prevent feedback loop
+    const cleanPhone = toNumber.replace(/\D/g, '');
+    this.markGhlOrigin(subAccountId, cleanPhone);
+
     // Start processing if not already running
     this.startProcessing(subAccountId);
+  }
+
+  // Mark a phone number as having a recent GHL-originated message
+  markGhlOrigin(subAccountId, phoneNumber) {
+    const key = `${subAccountId}:${phoneNumber}`;
+    ghlOriginMessages.set(key, Date.now());
+    // Auto-cleanup after TTL
+    setTimeout(() => ghlOriginMessages.delete(key), GHL_ORIGIN_TTL_MS);
+  }
+
+  // Check if a phone number had a recent GHL-originated message
+  isGhlOrigin(subAccountId, phoneNumber) {
+    const key = `${subAccountId}:${phoneNumber}`;
+    const timestamp = ghlOriginMessages.get(key);
+    if (!timestamp) return false;
+    if (Date.now() - timestamp > GHL_ORIGIN_TTL_MS) {
+      ghlOriginMessages.delete(key);
+      return false;
+    }
+    return true;
   }
 
   startProcessing(subAccountId) {

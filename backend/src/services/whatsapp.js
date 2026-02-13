@@ -5,6 +5,7 @@ const fs = require('fs');
 const { SubAccount, Message, Customer, WhatsAppMapping } = require('../models');
 const webhookService = require('./webhook');
 const ghlService = require('./ghl');
+const messageQueue = require('./messageQueue');
 const emailService = require('./email');
 const logger = require('../utils/logger');
 
@@ -673,16 +674,24 @@ class WhatsAppService {
         // Sync to GHL using resolved phone number (async, don't wait)
         // Pass pushName and isLID flag for name-based matching when phone number can't be resolved
         if (isFromMe) {
-          // Outbound message sent directly from WhatsApp
-          ghlService.syncMessageToGHL(
-            subAccount,
-            subAccount.phoneNumber || '',  // from (our number)
-            phoneForSync,                   // to (contact)
-            content,
-            'outbound',
-            resolvedContactName,            // Contact name from mapping (for LID resolution)
-            isLID
-          ).catch(err => logger.error('GHL sync error (outbound from WhatsApp):', err));
+          // Check if this message originated from a GHL webhook (to prevent feedback loop)
+          // GHL webhook → WhatsApp send → Baileys isFromMe → sync back to GHL → another webhook → loop
+          if (messageQueue.isGhlOrigin(subAccountId, phoneForSync)) {
+            logger.info('Skipping GHL sync for outbound message (originated from GHL webhook):', {
+              subAccountId, phone: phoneForSync
+            });
+          } else {
+            // Outbound message sent directly from WhatsApp (not from GHL)
+            ghlService.syncMessageToGHL(
+              subAccount,
+              subAccount.phoneNumber || '',  // from (our number)
+              phoneForSync,                   // to (contact)
+              content,
+              'outbound',
+              resolvedContactName,            // Contact name from mapping (for LID resolution)
+              isLID
+            ).catch(err => logger.error('GHL sync error (outbound from WhatsApp):', err));
+          }
         } else {
           // Inbound message
           ghlService.syncMessageToGHL(
