@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
 
 // Grace period after GHL connection - during this window we check message dates via API
 // to filter out old replayed messages that GHL sends when app is installed on a location
-const REPLAY_CHECK_WINDOW_MS = 5 * 60 * 1000; // 5 minutes after connection
+const REPLAY_CHECK_WINDOW_MS = 60 * 1000; // 1 minute after connection
 
 // Helper to guess media type from URL
 function guessMediaType(url) {
