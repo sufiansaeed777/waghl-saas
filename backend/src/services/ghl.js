@@ -811,6 +811,22 @@ class GHLService {
     }
   }
 
+  // Get a specific message by ID from GHL
+  // Used to check message creation date for replay detection
+  async getMessage(subAccount, messageId) {
+    try {
+      const response = await this.apiRequest(subAccount, 'GET', `/conversations/messages/${messageId}`);
+      return response;
+    } catch (error) {
+      logger.warn('GHL getMessage error:', {
+        messageId,
+        status: error.response?.status,
+        error: error.response?.data || error.message
+      });
+      return null;
+    }
+  }
+
   // Disconnect GHL for customer
   async disconnect(customerId) {
     try {

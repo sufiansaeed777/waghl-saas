@@ -82,6 +82,10 @@ module.exports = (sequelize) => {
     ghlTokenExpiresAt: {
       type: DataTypes.DATE,
       allowNull: true
+    },
+    ghlConnectedAt: {
+      type: DataTypes.DATE,
+      allowNull: true
     }
   }, {
     tableName: 'sub_accounts',

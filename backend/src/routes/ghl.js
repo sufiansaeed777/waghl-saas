@@ -7,12 +7,9 @@ const whatsappService = require('../services/whatsapp');
 const messageQueue = require('../services/messageQueue');
 const logger = require('../utils/logger');
 
-// Burst detector - GHL replays old outbound messages in rapid succession when app is installed
-// Real messages come one at a time, replays come as a flood (10+ in seconds)
-const locationMessageCounts = new Map(); // locationId -> { count, firstSeen, blocked }
-const BURST_WINDOW_MS = 5000; // 5-second window
-const BURST_THRESHOLD = 3; // More than 3 messages in 5 seconds = replay burst
-const BURST_BLOCK_MS = 30000; // Block for 30 seconds once burst is detected
+// Grace period after GHL connection - during this window we check message dates via API
+// to filter out old replayed messages that GHL sends when app is installed on a location
+const REPLAY_CHECK_WINDOW_MS = 5 * 60 * 1000; // 5 minutes after connection
 
 // Helper to guess media type from URL
 function guessMediaType(url) {
@@ -304,7 +301,8 @@ router.get('/callback', async (req, res) => {
       ghlRefreshToken: tokenData.refresh_token,
       ghlTokenExpiresAt: new Date(Date.now() + (tokenData.expires_in * 1000)),
       ghlLocationId: locationId || subAccount.ghlLocationId,
-      ghlConnected: true
+      ghlConnected: true,
+      ghlConnectedAt: new Date()
     });
 
 
@@ -586,39 +584,7 @@ router.post('/webhook', async (req, res) => {
         timestamp
       } = payload;
 
-      // Burst detector - skip rapid-fire replays of old messages
-      // GHL sends dozens of old messages in seconds when app is installed
-      // Real user messages come one at a time
-      if (locationId) {
-        const now = Date.now();
-        let burst = locationMessageCounts.get(locationId);
-
-        if (burst && burst.blocked && (now - burst.blockedAt < BURST_BLOCK_MS)) {
-          // Currently in burst-block mode
-          logger.info('Skipping GHL message (burst detected):', { locationId, phone: phone || to });
-          return res.status(200).json({ success: true, message: 'Burst detected, skipped' });
-        }
-
-        if (!burst || (now - burst.firstSeen > BURST_WINDOW_MS)) {
-          // Start new window
-          burst = { count: 1, firstSeen: now, blocked: false };
-        } else {
-          burst.count++;
-        }
-
-        if (burst.count > BURST_THRESHOLD && !burst.blocked) {
-          // Burst detected — block this location temporarily
-          burst.blocked = true;
-          burst.blockedAt = now;
-          locationMessageCounts.set(locationId, burst);
-          logger.warn('GHL message burst detected, blocking location temporarily:', { locationId, count: burst.count });
-          return res.status(200).json({ success: true, message: 'Burst detected, skipped' });
-        }
-
-        locationMessageCounts.set(locationId, burst);
-      }
-
-      // Also skip messages with old timestamps if present
+      // Skip messages with old timestamps if present in webhook payload
       const messageDate = dateAdded || timestamp || payload.date || payload.createdAt;
       if (messageDate) {
         const messageAge = Date.now() - new Date(messageDate).getTime();
@@ -704,6 +670,46 @@ router.post('/webhook', async (req, res) => {
       if (waStatus.status !== 'connected') {
         logger.warn(`WhatsApp not connected for sub-account ${subAccount.id}`);
         return res.status(200).json({ success: true });
+      }
+
+      // Replay detection: When GHL app is installed on a location, GHL replays ALL old
+      // outbound messages as webhooks. These are messages sent in GHL while the app was
+      // NOT connected. They have unique messageIds but no timestamps in the webhook.
+      // Solution: For the first 5 minutes after connection, check the message's actual
+      // creation date via GHL API. Skip messages created before the connection time.
+      const messageId = payload.messageId || payload.message_id;
+      if (subAccount.ghlConnectedAt && messageId) {
+        const connectedAt = new Date(subAccount.ghlConnectedAt).getTime();
+        const timeSinceConnection = Date.now() - connectedAt;
+
+        if (timeSinceConnection < REPLAY_CHECK_WINDOW_MS) {
+          // Within grace period - check message date via GHL API
+          try {
+            const msgData = await ghlService.getMessage(subAccount, messageId);
+            const msgDate = msgData?.dateAdded || msgData?.createdAt || msgData?.date;
+
+            if (msgDate) {
+              const messageCreatedAt = new Date(msgDate).getTime();
+              if (messageCreatedAt < connectedAt) {
+                logger.info('Skipping old replayed GHL message:', {
+                  messageId,
+                  messageDate: msgDate,
+                  connectedAt: new Date(connectedAt).toISOString(),
+                  phone: phoneNumber
+                });
+                return res.status(200).json({ success: true, message: 'Old message skipped' });
+              }
+            } else {
+              logger.warn('GHL message has no date field, allowing through:', { messageId });
+            }
+          } catch (apiErr) {
+            logger.warn('Failed to check message date via API, allowing through:', {
+              messageId,
+              error: apiErr.message
+            });
+            // If API check fails, let the message through rather than blocking valid messages
+          }
+        }
       }
 
       // Store/update phone number mapping for WhatsApp ID resolution
