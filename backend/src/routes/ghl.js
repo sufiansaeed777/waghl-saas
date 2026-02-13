@@ -7,6 +7,11 @@ const whatsappService = require('../services/whatsapp');
 const messageQueue = require('../services/messageQueue');
 const logger = require('../utils/logger');
 
+// Track when GHL was connected per location to skip old message replays
+// GHL replays all old outbound messages when app is first installed on a location
+const ghlConnectionCooldowns = new Map();
+const GHL_COOLDOWN_MS = 2 * 60 * 1000; // 2 minutes
+
 // Helper to guess media type from URL
 function guessMediaType(url) {
   if (!url) return 'document';
@@ -292,13 +297,20 @@ router.get('/callback', async (req, res) => {
     }
 
     // Update sub-account with GHL tokens
+    const finalLocationId = locationId || subAccount.ghlLocationId;
     await subAccount.update({
       ghlAccessToken: tokenData.access_token,
       ghlRefreshToken: tokenData.refresh_token,
       ghlTokenExpiresAt: new Date(Date.now() + (tokenData.expires_in * 1000)),
-      ghlLocationId: locationId || subAccount.ghlLocationId,
+      ghlLocationId: finalLocationId,
       ghlConnected: true
     });
+
+    // Set cooldown to skip old message replays from GHL
+    if (finalLocationId) {
+      ghlConnectionCooldowns.set(finalLocationId, Date.now());
+      logger.info(`GHL cooldown set for location ${finalLocationId} - skipping outbound webhooks for 2 minutes`);
+    }
 
     // Fetch location details from GHL to get the actual location name
     try {
@@ -578,13 +590,25 @@ router.post('/webhook', async (req, res) => {
         timestamp
       } = payload;
 
-      // Skip old messages - only process messages from the last 30 seconds
-      // This prevents GHL from replaying old conversation history as new messages
-      // Note: GHL doesn't always send timestamps, so only filter when one is present
+      // Skip old message replays after GHL connection
+      // When GHL app is installed, it replays all old outbound messages as webhooks
+      if (locationId && ghlConnectionCooldowns.has(locationId)) {
+        const connectedAt = ghlConnectionCooldowns.get(locationId);
+        const elapsed = Date.now() - connectedAt;
+        if (elapsed < GHL_COOLDOWN_MS) {
+          logger.info('Skipping GHL message during cooldown:', { locationId, elapsedMs: elapsed, phone: phone || to });
+          return res.status(200).json({ success: true, message: 'Cooldown active, skipped' });
+        } else {
+          // Cooldown expired, clean up
+          ghlConnectionCooldowns.delete(locationId);
+        }
+      }
+
+      // Also skip messages with old timestamps if present
       const messageDate = dateAdded || timestamp || payload.date || payload.createdAt;
       if (messageDate) {
         const messageAge = Date.now() - new Date(messageDate).getTime();
-        if (messageAge > 30 * 1000) { // older than 30 seconds
+        if (messageAge > 30 * 1000) {
           logger.info('Skipping old GHL message:', { messageDate, ageMs: messageAge, phone: phone || to });
           return res.status(200).json({ success: true, message: 'Old message skipped' });
         }
