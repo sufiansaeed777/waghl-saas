@@ -680,13 +680,44 @@ class WhatsAppService {
         // Sync to GHL using resolved phone number (async, don't wait)
         // Pass pushName and isLID flag for name-based matching when phone number can't be resolved
         if (isFromMe) {
-          // Check if this outbound was sent by our sendMessage function
+          // Check if this outbound was sent by our sendMessage function (GHL or API)
+          // Layer 1 & 2: Fast in-memory checks (pendingSends + messageQueue GHL origin)
           const cleanPhoneCheck = phoneForSync.replace(/\D/g, '');
-          const pendingKey = `${subAccountId}:${cleanPhoneCheck}`;
-          if (pendingSends.has(pendingKey)) {
+          const pendingKeyResolved = `${subAccountId}:${cleanPhoneCheck}`;
+          const pendingKeyOriginal = `${subAccountId}:${contactNumber}`;
+          const hasPendingSend = pendingSends.has(pendingKeyResolved) || pendingSends.has(pendingKeyOriginal);
+          const hasGhlOrigin = messageQueue.isGhlOrigin(subAccountId, cleanPhoneCheck);
+
+          // Layer 3: DB fallback - check for recent app-originated send to same phone
+          // This survives process restarts and has no TTL expiry issues
+          let hasRecentAppSend = false;
+          if (!hasPendingSend && !hasGhlOrigin) {
+            try {
+              const recentSend = await Message.findOne({
+                where: {
+                  subAccountId,
+                  direction: 'outbound',
+                  toNumber: cleanPhoneCheck,
+                  createdAt: { [require('sequelize').Op.gte]: new Date(Date.now() - 60000) }
+                },
+                order: [['createdAt', 'DESC']]
+              });
+              if (recentSend?.metadata?.source === 'app') {
+                hasRecentAppSend = true;
+              }
+            } catch (dbErr) {
+              logger.warn('DB check for recent app send failed:', dbErr.message);
+            }
+          }
+
+          const isAppOriginated = hasPendingSend || hasGhlOrigin || hasRecentAppSend;
+
+          if (isAppOriginated) {
             // Sent by our app (from GHL or API) - GHL already has it, skip sync
+            const matchedBy = hasPendingSend ? 'pendingSend' :
+                              hasGhlOrigin ? 'ghlOrigin' : 'recentDbSend';
             logger.info('Skipping GHL sync for app-originated outbound:', {
-              subAccountId, phone: phoneForSync
+              subAccountId, phone: phoneForSync, matchedBy
             });
           } else {
             // Sent from another device (WhatsApp phone/web/desktop) - sync to GHL
@@ -789,6 +820,13 @@ class WhatsAppService {
       const pendingKey = `${subAccountId}:${cleanPhone}`;
       pendingSends.set(pendingKey, Date.now());
       setTimeout(() => pendingSends.delete(pendingKey), PENDING_SEND_TTL_MS);
+      // Also mark the WhatsApp ID (LID) if different from phone number
+      // messages.upsert may receive the message with LID JID instead of phone JID
+      if (whatsappId && whatsappId !== cleanPhone) {
+        const pendingKeyLID = `${subAccountId}:${whatsappId}`;
+        pendingSends.set(pendingKeyLID, Date.now());
+        setTimeout(() => pendingSends.delete(pendingKeyLID), PENDING_SEND_TTL_MS);
+      }
 
       let sentMessage;
 
@@ -851,7 +889,7 @@ class WhatsAppService {
         storeMessage(subAccountId, sentMessage);
       }
 
-      // Store message
+      // Store message (mark source: 'app' so messages.upsert can detect app-originated sends)
       const message = await Message.create({
         subAccountId,
         messageId: sentMessage?.key?.id,
@@ -860,7 +898,8 @@ class WhatsAppService {
         toNumber: toNumber.replace(/\D/g, ''),
         messageType,
         content,
-        status: 'sent'
+        status: 'sent',
+        metadata: { source: 'app' }
       });
 
       logger.info(`Sent message from ${subAccountId} to ${toNumber}`);
