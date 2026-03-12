@@ -524,46 +524,17 @@ class WhatsAppService {
               contactName: isFromMe ? mapping.contactName : (pushName || mapping.contactName)
             });
           } else {
-            // No mapping found - try to safely match to a recent outbound
-            // SAFETY: Only auto-match if there's EXACTLY ONE unmapped number from recent outbound
-            const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000);
-
-            // Find all unmapped phone numbers with recent activity
-            const unmappedMappings = await WhatsAppMapping.findAll({
-              where: {
-                subAccountId,
-                whatsappId: null,  // Phone number stored but no WhatsApp ID yet
-                lastActivityAt: { [require('sequelize').Op.gte]: fiveMinutesAgo }
-              }
+            // No mapping found for this WhatsApp ID
+            // Do NOT auto-match - let mappings build naturally from reliable sources:
+            // 1. socket.onWhatsApp() during outbound sends
+            // 2. Baileys lid-mapping.update event
+            // 3. Baileys contacts.upsert event
+            logger.warn('No WhatsApp ID mapping found - skipping auto-match:', {
+              contactNumber,
+              pushName,
+              isFromMe,
+              hint: 'Mapping will be created automatically when a message is sent to this contact'
             });
-
-            if (unmappedMappings.length === 1) {
-              // Safe to match - only one recent unmapped number
-              const unmappedMapping = unmappedMappings[0];
-              // Only update contactName with pushName for inbound (pushName is the contact's name)
-              await unmappedMapping.update({
-                whatsappId: contactNumber,
-                contactName: isFromMe ? unmappedMapping.contactName : (pushName || unmappedMapping.contactName),
-                lastActivityAt: new Date()
-              });
-              resolvedPhoneNumber = unmappedMapping.phoneNumber;
-              resolvedContactName = isFromMe ? unmappedMapping.contactName : (pushName || unmappedMapping.contactName);
-              logger.info('Created WhatsApp ID mapping (single unmapped):', {
-                whatsappId: contactNumber,
-                phoneNumber: resolvedPhoneNumber,
-                contactName: resolvedContactName
-              });
-            } else if (unmappedMappings.length > 1) {
-              // Multiple unmapped numbers - too risky to auto-match
-              logger.warn('Multiple unmapped phone numbers - cannot safely auto-match WhatsApp ID:', {
-                contactNumber,
-                pushName,
-                unmappedCount: unmappedMappings.length
-              });
-              // Keep using the WhatsApp ID as-is
-            } else {
-              logger.warn('No recent unmapped phone number found for WhatsApp ID:', { contactNumber, pushName });
-            }
           }
         }
 
@@ -678,7 +649,7 @@ class WhatsAppService {
         });
 
         // Sync to GHL using resolved phone number (async, don't wait)
-        // Pass pushName and isLID flag for name-based matching when phone number can't be resolved
+        // Pass isLID flag so GHL sync can detect unresolved LIDs and skip sync
         if (isFromMe) {
           // Check if this outbound was sent by our sendMessage function (GHL or API)
           // Layer 1 & 2: Fast in-memory checks (pendingSends + messageQueue GHL origin)
@@ -729,7 +700,9 @@ class WhatsAppService {
               subAccount.phoneNumber || '',   // from (our number)
               phoneForSync,                   // to (contact)
               content,
-              'outbound'
+              'outbound',
+              null,    // no contactName for outbound
+              isLID    // Flag so GHL sync can detect unresolved LIDs
             ).catch(err => logger.error('GHL sync error:', err));
           }
         } else {
@@ -740,8 +713,8 @@ class WhatsAppService {
             subAccount.phoneNumber || '',   // to (our number)
             content,
             'inbound',
-            pushName,  // Pass contact name for name-based matching fallback
-            isLID      // Flag indicating this is a WhatsApp LID (not a real phone number)
+            pushName,  // Contact name (for logging only)
+            isLID      // Flag so GHL sync can detect unresolved LIDs
           ).catch(err => logger.error('GHL sync error:', err));
         }
 

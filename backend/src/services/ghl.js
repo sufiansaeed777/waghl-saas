@@ -669,68 +669,19 @@ class GHLService {
           externalPhone
         );
       } else {
-        // Phone is either invalid format OR an unresolved LID
-        // Try name-based matching as fallback
-        logger.info('Phone is unresolved LID or invalid, trying name-based matching', {
+        // Phone is an unresolved LID or invalid format
+        // Do NOT attempt name-based matching - it can link messages to the wrong contact
+        // when multiple contacts share the same first name.
+        // Instead, skip syncing and let the LID mapping build naturally from reliable sources.
+        logger.warn('Skipping GHL sync: unresolved WhatsApp ID cannot be matched to a contact', {
           externalPhone,
-          contactName,
+          contactName: contactName || 'Unknown',
           isLID,
           phoneLength: externalPhone.length,
-          looksLikeUnresolvedLID
+          locationId: subAccount.ghlLocationId,
+          hint: 'Mapping will be created when a message is sent to this contact via WhatsApp'
         });
-
-        if (contactName) {
-          // Try to find existing contact by name
-          contact = await this.getContactByName(
-            subAccount,
-            subAccount.ghlLocationId,
-            contactName
-          );
-
-          if (contact) {
-            logger.info('Found GHL contact by name:', { contactId: contact.id, contactName: contact.name });
-
-            // Store the LID → phone mapping for future lookups
-            // This allows outbound messages to find the contact even without name
-            if (contact.phone && isLID) {
-              const { WhatsAppMapping } = require('../models');
-              const cleanPhone = contact.phone.replace(/\D/g, '');
-              try {
-                await WhatsAppMapping.upsert({
-                  subAccountId: subAccount.id,
-                  phoneNumber: cleanPhone,
-                  whatsappId: externalPhone,  // The LID
-                  contactName: contactName,
-                  lastActivityAt: new Date()
-                }, {
-                  conflictFields: ['subAccountId', 'phoneNumber']
-                });
-                logger.info('Stored LID mapping from name match:', {
-                  phoneNumber: cleanPhone,
-                  whatsappId: externalPhone,
-                  contactName
-                });
-              } catch (mappingErr) {
-                logger.warn('Failed to store LID mapping:', mappingErr.message);
-              }
-            }
-          }
-        }
-
-        if (!contact) {
-          // No name match found
-          // IMPORTANT: Do NOT create contacts with WhatsApp internal IDs as phone numbers
-          // This would create duplicate contacts with wrong phone numbers
-          // Instead, log a warning and skip syncing this message
-          const displayName = contactName || 'Unknown';
-          logger.warn('Cannot sync message: WhatsApp contact not found in GHL', {
-            externalPhone,
-            contactName: displayName,
-            locationId: subAccount.ghlLocationId,
-            suggestion: 'Create the contact in GHL first with their real phone number'
-          });
-          return null;  // Skip syncing - better than creating wrong contacts
-        }
+        return null;
       }
 
       if (!contact) {
