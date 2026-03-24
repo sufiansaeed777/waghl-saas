@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="it">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>WhatsApp Connection</title>
+  <title>Connessione WhatsApp</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -200,12 +200,12 @@
         <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
       </svg>
     </div>
-    <h1>WhatsApp Connection</h1>
+    <h1>Connessione WhatsApp</h1>
     <p class="subtitle" id="subAccountName"></p>
     <div id="content">
       <div class="loading">
         <div class="spinner"></div>
-        <p style="color: #6b7280;">Loading...</p>
+        <p style="color: #6b7280;">Caricamento...</p>
       </div>
     </div>
   </div>
@@ -216,9 +216,9 @@
       <div class="modal-icon success">
         <svg viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41L9 16.17z"/></svg>
       </div>
-      <h2>Connection Successful!</h2>
-      <p id="successMessage">GHL location has been connected successfully. You can now connect your WhatsApp.</p>
-      <button class="btn btn-primary" onclick="closeModal('successModal'); loadStatus();">Continue</button>
+      <h2>Connessione riuscita!</h2>
+      <p id="successMessage">Posizione Bibot connessa con successo. Ora puoi connettere il tuo WhatsApp.</p>
+      <button class="btn btn-primary" onclick="closeModal('successModal'); loadStatus();">Continua</button>
     </div>
   </div>
 
@@ -228,9 +228,9 @@
       <div class="modal-icon error">
         <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
       </div>
-      <h2>Connection Failed</h2>
-      <p id="errorMessage">An error occurred while connecting to GHL.</p>
-      <button class="btn btn-secondary" onclick="closeModal('errorModal')">Close</button>
+      <h2>Connessione fallita</h2>
+      <p id="errorMessage">Si è verificato un errore durante la connessione a Bibot.</p>
+      <button class="btn btn-secondary" onclick="closeModal('errorModal')">Chiudi</button>
     </div>
   </div>
 
@@ -264,7 +264,7 @@
     }
 
     function showSuccessModal(message) {
-      document.getElementById('successMessage').textContent = message || 'GHL location has been connected successfully!';
+      document.getElementById('successMessage').textContent = message || 'Posizione Bibot connessa con successo!';
       showModal('successModal');
     }
 
@@ -432,19 +432,19 @@
     if (errorParam) {
       hasError = true;
       const errorMessages = {
-        'location_not_found': 'Location not found. Please install the app from the GHL Marketplace first.',
-        'missing_location': 'Could not identify your GHL location.',
-        'server_error': 'Server error. Please try again later.'
+        'location_not_found': 'Posizione non trovata. Installa prima l\'app dal Marketplace Bibot.',
+        'missing_location': 'Impossibile identificare la tua posizione Bibot.',
+        'server_error': 'Errore del server. Riprova più tardi.'
       };
       document.getElementById('content').innerHTML = `
         <div class="error-box">
-          <h1>Setup Required</h1>
-          <p>${errorMessages[errorParam] || 'An error occurred.'}</p>
+          <h1>Configurazione necessaria</h1>
+          <p>${errorMessages[errorParam] || 'Si è verificato un errore.'}</p>
           <div class="info-box" style="margin-top: 16px;">
-            <p><strong>To fix this:</strong><br>
-            1. Install the app from the GHL Marketplace<br>
-            2. Complete the OAuth authorization<br>
-            3. Try again</p>
+            <p><strong>Per risolvere:</strong><br>
+            1. Installa l'app dal Marketplace Bibot<br>
+            2. Completa l'autorizzazione OAuth<br>
+            3. Riprova</p>
           </div>
         </div>
       `;
@@ -677,7 +677,7 @@
         // Show GHL disconnected error instead of generic "no locations" error
         showSubscriptionError({
           errorCode: 'GHL_DISCONNECTED',
-          message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.'
+          message: 'La connessione Bibot è stata disconnessa. Riconnetti Bibot dal pannello di amministrazione.'
         });
         return;
       }
@@ -696,20 +696,20 @@
 
       document.getElementById('content').innerHTML = `
         <div class="setup-box">
-          <h2>Select Your Location</h2>
-          <p>Multiple GHL locations found. Please select the one you want to connect:</p>
+          <h2>Seleziona la tua posizione</h2>
+          <p>Trovate più posizioni Bibot. Seleziona quella che vuoi connettere:</p>
         </div>
         <div class="location-picker">
           <select id="locationSelect">
-            <option value="">-- Select Location --</option>
+            <option value="">-- Seleziona posizione --</option>
             ${options}
           </select>
           <button class="btn btn-primary" onclick="onLocationSelected()">
-            Continue
+            Continua
           </button>
         </div>
         <div class="info-box">
-          <p><strong>Tip:</strong> Your selection will be remembered for future visits.</p>
+          <p><strong>Suggerimento:</strong> La tua selezione verrà ricordata per le visite future.</p>
         </div>
       `;
     }
@@ -720,7 +720,7 @@
       const selectedId = select.value;
 
       if (!selectedId) {
-        alert('Please select a location');
+        alert('Seleziona una posizione');
         return;
       }
 
@@ -736,7 +736,7 @@
       document.getElementById('content').innerHTML = `
         <div class="loading">
           <div class="spinner"></div>
-          <p style="color: #6b7280;">Loading...</p>
+          <p style="color: #6b7280;">Caricamento...</p>
         </div>
       `;
 
@@ -768,7 +768,7 @@
         // Show GHL disconnected error for any failure
         showSubscriptionError({
           errorCode: 'GHL_DISCONNECTED',
-          message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.'
+          message: 'La connessione Bibot è stata disconnessa. Riconnetti Bibot dal pannello di amministrazione.'
         });
       }
     }
@@ -885,11 +885,11 @@
     function showError(message) {
       document.getElementById('content').innerHTML = `
         <div class="error-box">
-          <h1>Setup Required</h1>
+          <h1>Configurazione necessaria</h1>
           <p>${message}</p>
           <div class="info-box" style="margin-top: 16px;">
-            <p><strong>To fix this:</strong><br>
-            Please contact your administrator to configure this location.</p>
+            <p><strong>Per risolvere:</strong><br>
+            Contatta il tuo amministratore per configurare questa posizione.</p>
           </div>
         </div>
       `;
@@ -940,8 +940,8 @@
       } catch (err) {
         document.getElementById('content').innerHTML = `
           <div class="error-box">
-            <h1>Error</h1>
-            <p>${err.message || 'Failed to load status'}</p>
+            <h1>Errore</h1>
+            <p>${err.message || 'Impossibile caricare lo stato'}</p>
           </div>
         `;
       }
@@ -950,27 +950,27 @@
     // Show subscription/payment error with appropriate message
     function showSubscriptionError(errorData) {
       const errorCode = errorData.errorCode || 'UNKNOWN';
-      let title = 'Subscription Required';
-      let message = errorData.message || 'An active subscription is required to use this feature.';
+      let title = 'Abbonamento richiesto';
+      let message = errorData.message || 'È necessario un abbonamento attivo per utilizzare questa funzione.';
       let icon = '💳';
-      let actionText = 'Please contact your administrator or visit your account settings to subscribe.';
+      let actionText = 'Contatta il tuo amministratore o visita le impostazioni del tuo account per abbonarti.';
 
       if (errorCode === 'TRIAL_EXPIRED') {
-        title = 'Free Trial Ended';
+        title = 'Prova gratuita terminata';
         icon = '⏰';
       } else if (errorCode === 'NO_SUBSCRIPTION') {
-        title = 'Subscription Required';
+        title = 'Abbonamento richiesto';
         icon = '💳';
       } else if (errorCode === 'SUBACCOUNT_NOT_PAID') {
-        title = 'Payment Required';
+        title = 'Pagamento richiesto';
         icon = '💳';
       } else if (errorCode === 'ACCOUNT_INACTIVE') {
-        title = 'Account Inactive';
+        title = 'Account inattivo';
         icon = '🚫';
       } else if (errorCode === 'GHL_DISCONNECTED') {
-        title = 'GHL Connection Lost';
+        title = 'Connessione Bibot persa';
         icon = '🔗';
-        actionText = 'The GoHighLevel integration has been disconnected. Please ask your administrator to reconnect GHL from the GHLWA Connector admin panel.';
+        actionText = 'L\'integrazione Bibot è stata disconnessa. Chiedi al tuo amministratore di riconnettere Bibot dal pannello di amministrazione.';
       }
 
       document.getElementById('content').innerHTML = `
@@ -980,7 +980,7 @@
           <p style="color: #6b7280; margin-bottom: 24px;">${message}</p>
           <div style="background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 16px; text-align: left;">
             <p style="color: #991b1b; font-size: 14px; margin: 0;">
-              <strong>What to do:</strong><br>
+              <strong>Cosa fare:</strong><br>
               ${actionText}
             </p>
           </div>
@@ -1001,18 +1001,18 @@
             </svg>
             <span class="status-badge status-connected">
               <span class="status-dot"></span>
-              Connected
+              Connesso
             </span>
-            <p class="phone-number">+${status.phoneNumber || 'Unknown'}</p>
+            <p class="phone-number">+${status.phoneNumber || 'Sconosciuto'}</p>
           </div>
           <p style="color: #6b7280; margin-bottom: 16px;">
-            Your WhatsApp is connected and ready to send messages.
+            Il tuo WhatsApp è connesso e pronto per inviare messaggi.
           </p>
           <button class="btn btn-danger" onclick="disconnect()">
-            Disconnect WhatsApp
+            Disconnetti WhatsApp
           </button>
           <button class="btn btn-secondary" style="margin-top: 12px;" onclick="disconnectGhl()">
-            Disconnect GHL
+            Disconnetti Bibot
           </button>
         `;
       } else if (hasQR) {
@@ -1021,21 +1021,21 @@
         document.getElementById('content').innerHTML = `
           <span class="status-badge status-connecting">
             <span class="status-dot"></span>
-            Waiting for scan
+            In attesa di scansione
           </span>
           <div class="qr-container">
-            <img src="${qrImageUrl}" alt="QR Code" class="qr-code" />
+            <img src="${qrImageUrl}" alt="Codice QR" class="qr-code" />
             <p class="qr-instructions">
-              Open WhatsApp on your phone<br>
-              Go to <strong>Settings > Linked Devices > Link a Device</strong><br>
-              Scan this QR code
+              Apri WhatsApp sul tuo telefono<br>
+              Vai su <strong>Impostazioni > Dispositivi collegati > Collega un dispositivo</strong><br>
+              Scansiona questo codice QR
             </p>
           </div>
           <button class="btn btn-secondary" onclick="location.reload()">
-            Refresh
+            Aggiorna
           </button>
           <div class="info-box">
-            <p><strong>Note:</strong> QR code expires after 60 seconds. Click Refresh if it expires.</p>
+            <p><strong>Nota:</strong> Il codice QR scade dopo 60 secondi. Clicca Aggiorna se scade.</p>
           </div>
         `;
         setTimeout(pollStatus, 3000);
@@ -1043,11 +1043,11 @@
         document.getElementById('content').innerHTML = `
           <span class="status-badge status-connecting">
             <span class="status-dot"></span>
-            Connecting...
+            Connessione in corso...
           </span>
           <div class="qr-container">
             <div class="spinner" style="width: 48px; height: 48px; margin: 40px auto; border-width: 4px; color: #0f766e;"></div>
-            <p class="qr-instructions">Generating QR code...</p>
+            <p class="qr-instructions">Generazione codice QR...</p>
           </div>
         `;
         setTimeout(pollStatus, 2000);
@@ -1055,16 +1055,16 @@
         document.getElementById('content').innerHTML = `
           <span class="status-badge status-disconnected">
             <span class="status-dot"></span>
-            Disconnected
+            Disconnesso
           </span>
           <p style="color: #6b7280; margin-bottom: 24px;">
-            Connect your WhatsApp to start sending messages through GoHighLevel.
+            Connetti il tuo WhatsApp per iniziare a inviare messaggi tramite Bibot.
           </p>
           <button id="connectBtn" class="btn btn-primary" onclick="connect()">
-            Connect WhatsApp
+            Connetti WhatsApp
           </button>
           <div class="info-box">
-            <p><strong>How it works:</strong> After clicking connect, a QR code will appear. Scan it with your WhatsApp to link your account.</p>
+            <p><strong>Come funziona:</strong> Dopo aver cliccato su connetti, apparirà un codice QR. Scansionalo con il tuo WhatsApp per collegare il tuo account.</p>
           </div>
         `;
       }
@@ -1073,7 +1073,7 @@
     async function connect() {
       const btn = document.getElementById('connectBtn');
       btn.disabled = true;
-      btn.innerHTML = '<div class="spinner"></div> Connecting...';
+      btn.innerHTML = '<div class="spinner"></div> Connessione in corso...';
 
       try {
         // Token is sufficient authentication - don't pass locationId
@@ -1088,19 +1088,19 @@
           isPolling = false; // Reset polling flag
           pollStatus();
         } else {
-          alert(data.error || 'Failed to connect');
+          alert(data.error || 'Connessione fallita');
           btn.disabled = false;
-          btn.innerHTML = 'Connect WhatsApp';
+          btn.innerHTML = 'Connetti WhatsApp';
         }
       } catch (err) {
-        alert('Connection failed');
+        alert('Connessione fallita');
         btn.disabled = false;
-        btn.innerHTML = 'Connect WhatsApp';
+        btn.innerHTML = 'Connetti WhatsApp';
       }
     }
 
     async function disconnect() {
-      if (!confirm('Are you sure you want to disconnect WhatsApp?')) return;
+      if (!confirm('Sei sicuro di voler disconnettere WhatsApp?')) return;
 
       try {
         // Token is sufficient authentication
@@ -1126,15 +1126,15 @@
           }
         } else {
           const data = await res.json().catch(() => ({}));
-          alert(data.error || 'Failed to disconnect');
+          alert(data.error || 'Disconnessione fallita');
         }
       } catch (err) {
-        alert('Disconnect failed');
+        alert('Disconnessione fallita');
       }
     }
 
     async function disconnectGhl() {
-      if (!confirm('Are you sure you want to disconnect GoHighLevel? This will also disconnect WhatsApp.')) return;
+      if (!confirm('Sei sicuro di voler disconnettere Bibot? Questo disconnetterà anche WhatsApp.')) return;
 
       try {
         const res = await fetch(apiBase + '/api/embed/disconnect-ghl/' + token, {
@@ -1147,7 +1147,7 @@
           clearFromStorage(locationId);
           showSubscriptionError({
             errorCode: 'GHL_DISCONNECTED',
-            message: 'GoHighLevel connection has been disconnected. Please reconnect GHL from the admin panel.'
+            message: 'La connessione Bibot è stata disconnessa. Riconnetti Bibot dal pannello di amministrazione.'
           });
         } else if (res.status === 401) {
           console.log('Token invalid on GHL disconnect, clearing cache...');
@@ -1161,10 +1161,10 @@
           }
         } else {
           const data = await res.json().catch(() => ({}));
-          alert(data.error || 'Failed to disconnect GHL');
+          alert(data.error || 'Disconnessione Bibot fallita');
         }
       } catch (err) {
-        alert('GHL disconnect failed');
+        alert('Disconnessione Bibot fallita');
       }
     }
 
