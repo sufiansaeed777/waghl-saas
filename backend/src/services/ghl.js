@@ -443,6 +443,20 @@ class GHLService {
     }
   }
 
+  // Search GHL contacts by name and return all candidates with phone numbers
+  // Used for LID resolution - caller verifies matches via socket.onWhatsApp()
+  async searchContactsByName(customer, locationId, name) {
+    try {
+      if (!name || name.trim().length === 0) return [];
+      const params = new URLSearchParams({ locationId, query: name.trim() });
+      const response = await this.apiRequest(customer, 'GET', `/contacts/?${params.toString()}`);
+      return (response.contacts || []).filter(c => c.phone);
+    } catch (error) {
+      logger.error('GHL search contacts by name error:', error);
+      return [];
+    }
+  }
+
   // Create contact in GHL
   // Returns { contact, isDuplicate } - isDuplicate is true if contact already existed
   async createContact(customer, locationId, contactData) {

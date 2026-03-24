@@ -524,17 +524,64 @@ class WhatsAppService {
               contactName: isFromMe ? mapping.contactName : (pushName || mapping.contactName)
             });
           } else {
-            // No mapping found for this WhatsApp ID
-            // Do NOT auto-match - let mappings build naturally from reliable sources:
-            // 1. socket.onWhatsApp() during outbound sends
-            // 2. Baileys lid-mapping.update event
-            // 3. Baileys contacts.upsert event
-            logger.warn('No WhatsApp ID mapping found - skipping auto-match:', {
-              contactNumber,
-              pushName,
-              isFromMe,
-              hint: 'Mapping will be created automatically when a message is sent to this contact'
-            });
+            // No mapping found - try to actively resolve LID using WhatsApp verification
+            // Search GHL for contacts with this name, then verify each phone via socket.onWhatsApp()
+            // This is SAFE because WhatsApp itself confirms the phone→LID link
+            let resolved = false;
+
+            if (pushName && !isFromMe) {
+              const socket = connections.get(subAccountId);
+              const sa = await SubAccount.findByPk(subAccountId);
+              if (socket && sa?.ghlConnected && sa?.ghlAccessToken && sa?.ghlLocationId) {
+                try {
+                  const candidates = await ghlService.searchContactsByName(sa, sa.ghlLocationId, pushName);
+                  logger.info('LID resolution: searching GHL candidates:', {
+                    lid: contactNumber, pushName, candidateCount: candidates.length
+                  });
+
+                  for (const candidate of candidates) {
+                    const cleanPhone = candidate.phone.replace(/\D/g, '');
+                    try {
+                      const [result] = await socket.onWhatsApp(cleanPhone);
+                      if (result?.exists) {
+                        const verifiedId = result.jid.split('@')[0];
+                        if (verifiedId === contactNumber) {
+                          // VERIFIED: WhatsApp confirmed this phone belongs to this LID
+                          await WhatsAppMapping.upsert({
+                            subAccountId,
+                            phoneNumber: cleanPhone,
+                            whatsappId: contactNumber,
+                            contactName: pushName,
+                            lastActivityAt: new Date()
+                          }, { conflictFields: ['subAccountId', 'phoneNumber'] });
+                          resolvedPhoneNumber = cleanPhone;
+                          resolvedContactName = pushName;
+                          resolved = true;
+                          logger.info('LID resolved via WhatsApp-verified GHL match:', {
+                            lid: contactNumber, phoneNumber: cleanPhone,
+                            contactName: pushName, ghlContactId: candidate.id
+                          });
+                          break;
+                        }
+                      }
+                    } catch (waErr) {
+                      logger.warn('onWhatsApp verification failed for candidate:', {
+                        phone: cleanPhone, error: waErr.message
+                      });
+                    }
+                  }
+                } catch (ghlErr) {
+                  logger.warn('GHL candidate search failed:', ghlErr.message);
+                }
+              }
+            }
+
+            if (!resolved) {
+              logger.warn('No WhatsApp ID mapping found - could not resolve:', {
+                contactNumber, pushName, isFromMe,
+                hint: 'Mapping will be created when a message is sent to this contact from GHL'
+              });
+            }
           }
         }
 
