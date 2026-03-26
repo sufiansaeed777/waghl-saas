@@ -407,9 +407,61 @@ class WhatsAppService {
         } catch (emailErr) {
           logger.error('Error sending WhatsApp connected email:', emailErr);
         }
+
+        // Resolve LID mappings in background after connection stabilizes
+        setTimeout(() => this.resolveAllLIDMappings(subAccountId).catch(err =>
+          logger.error('Background LID mapping resolution failed:', err)
+        ), 5000);
       }
     } catch (error) {
       logger.error(`Handle connection update error for ${subAccountId}:`, error);
+    }
+  }
+
+  // Batch-resolve LID mappings for all known phone numbers
+  // Called after session connects to build phone→LID mappings proactively
+  async resolveAllLIDMappings(subAccountId) {
+    const socket = connections.get(subAccountId);
+    if (!socket) return;
+
+    try {
+      const unmapped = await WhatsAppMapping.findAll({
+        where: { subAccountId, whatsappId: null },
+        attributes: ['id', 'phoneNumber']
+      });
+
+      if (unmapped.length === 0) {
+        logger.info('LID mapping resolution: no unmapped phones to resolve', { subAccountId });
+        return;
+      }
+
+      logger.info(`LID mapping resolution: starting for ${unmapped.length} phones`, { subAccountId });
+
+      let resolved = 0;
+      let errors = 0;
+      for (const mapping of unmapped) {
+        try {
+          const [result] = await socket.onWhatsApp(mapping.phoneNumber);
+          if (result?.exists) {
+            const whatsappId = result.jid.split('@')[0];
+            // Only store if it's a different ID (i.e., a LID, not just the phone repeated)
+            if (whatsappId && whatsappId !== mapping.phoneNumber) {
+              await mapping.update({ whatsappId, lastActivityAt: new Date() });
+              resolved++;
+            }
+          }
+        } catch (err) {
+          errors++;
+          if (errors > 10) {
+            logger.warn('LID mapping resolution: too many errors, stopping', { subAccountId, resolved, errors });
+            break;
+          }
+        }
+      }
+
+      logger.info(`LID mapping resolution complete: ${resolved}/${unmapped.length} resolved, ${errors} errors`, { subAccountId });
+    } catch (err) {
+      logger.error('LID mapping resolution error:', { subAccountId, error: err.message });
     }
   }
 
@@ -524,55 +576,54 @@ class WhatsAppService {
               contactName: isFromMe ? mapping.contactName : (pushName || mapping.contactName)
             });
           } else {
-            // No mapping found - try to actively resolve LID using WhatsApp verification
-            // Search GHL for contacts with this name, then verify each phone via socket.onWhatsApp()
-            // This is SAFE because WhatsApp itself confirms the phone→LID link
+            // No mapping found - try to resolve by checking unmapped phones via WhatsApp
+            // This is SAFE: WhatsApp itself confirms which phone belongs to this LID
             let resolved = false;
+            const socket = connections.get(subAccountId);
 
-            if (pushName && !isFromMe) {
-              const socket = connections.get(subAccountId);
-              const sa = await SubAccount.findByPk(subAccountId);
-              if (socket && sa?.ghlConnected && sa?.ghlAccessToken && sa?.ghlLocationId) {
-                try {
-                  const candidates = await ghlService.searchContactsByName(sa, sa.ghlLocationId, pushName);
-                  logger.info('LID resolution: searching GHL candidates:', {
-                    lid: contactNumber, pushName, candidateCount: candidates.length
+            if (socket) {
+              try {
+                // Try all unmapped phone numbers for this subAccount
+                const unmapped = await WhatsAppMapping.findAll({
+                  where: { subAccountId, whatsappId: null },
+                  attributes: ['id', 'phoneNumber'],
+                  limit: 100
+                });
+
+                if (unmapped.length > 0) {
+                  logger.info('LID resolution: checking unmapped phones:', {
+                    lid: contactNumber, pushName, unmappedCount: unmapped.length
                   });
 
-                  for (const candidate of candidates) {
-                    const cleanPhone = candidate.phone.replace(/\D/g, '');
+                  for (const entry of unmapped) {
                     try {
-                      const [result] = await socket.onWhatsApp(cleanPhone);
+                      const [result] = await socket.onWhatsApp(entry.phoneNumber);
                       if (result?.exists) {
                         const verifiedId = result.jid.split('@')[0];
                         if (verifiedId === contactNumber) {
                           // VERIFIED: WhatsApp confirmed this phone belongs to this LID
-                          await WhatsAppMapping.upsert({
-                            subAccountId,
-                            phoneNumber: cleanPhone,
+                          await entry.update({
                             whatsappId: contactNumber,
-                            contactName: pushName,
+                            contactName: isFromMe ? entry.contactName : (pushName || entry.contactName),
                             lastActivityAt: new Date()
-                          }, { conflictFields: ['subAccountId', 'phoneNumber'] });
-                          resolvedPhoneNumber = cleanPhone;
-                          resolvedContactName = pushName;
+                          });
+                          resolvedPhoneNumber = entry.phoneNumber;
+                          resolvedContactName = isFromMe ? entry.contactName : (pushName || entry.contactName);
                           resolved = true;
-                          logger.info('LID resolved via WhatsApp-verified GHL match:', {
-                            lid: contactNumber, phoneNumber: cleanPhone,
-                            contactName: pushName, ghlContactId: candidate.id
+                          logger.info('LID resolved via WhatsApp-verified phone match:', {
+                            lid: contactNumber, phoneNumber: entry.phoneNumber,
+                            contactName: resolvedContactName
                           });
                           break;
                         }
                       }
                     } catch (waErr) {
-                      logger.warn('onWhatsApp verification failed for candidate:', {
-                        phone: cleanPhone, error: waErr.message
-                      });
+                      // Skip this phone on error, continue to next
                     }
                   }
-                } catch (ghlErr) {
-                  logger.warn('GHL candidate search failed:', ghlErr.message);
                 }
+              } catch (err) {
+                logger.warn('LID on-demand resolution error:', err.message);
               }
             }
 
