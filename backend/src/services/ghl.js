@@ -683,19 +683,29 @@ class GHLService {
           externalPhone
         );
       } else {
-        // Phone is an unresolved LID or invalid format
-        // Do NOT attempt name-based matching - it can link messages to the wrong contact
-        // when multiple contacts share the same first name.
-        // Instead, skip syncing and let the LID mapping build naturally from reliable sources.
-        logger.warn('Skipping GHL sync: unresolved WhatsApp ID cannot be matched to a contact', {
-          externalPhone,
-          contactName: contactName || 'Unknown',
-          isLID,
-          phoneLength: externalPhone.length,
-          locationId: subAccount.ghlLocationId,
-          hint: 'Mapping will be created when a message is sent to this contact via WhatsApp'
-        });
-        return null;
+        // Phone is an unresolved LID - try exact full name match for THIS message only
+        // SAFETY: Only use exact matches (score 100) and do NOT store permanent LID→phone mapping
+        // This prevents the original bug where wrong mappings poisoned future messages
+        if (contactName) {
+          contact = await this.getContactByName(subAccount, subAccount.ghlLocationId, contactName);
+          if (contact) {
+            // getContactByName already filters for exact/unambiguous matches
+            logger.info('Syncing via exact name match (no permanent mapping):', {
+              externalPhone, contactName, contactId: contact.id, contactPhone: contact.phone
+            });
+            // Do NOT store LID→phone mapping - let it build from verified outbound echoes only
+          } else {
+            logger.warn('Skipping GHL sync: no exact name match found for unresolved LID', {
+              externalPhone, contactName, locationId: subAccount.ghlLocationId
+            });
+            return null;
+          }
+        } else {
+          logger.warn('Skipping GHL sync: unresolved LID with no contact name', {
+            externalPhone, isLID, locationId: subAccount.ghlLocationId
+          });
+          return null;
+        }
       }
 
       if (!contact) {

@@ -26,6 +26,11 @@ const msgRetryCounterCache = new Map();
 const pendingSends = new Map();
 const PENDING_SEND_TTL_MS = 10000; // 10 seconds (messages.upsert fires within ~3s)
 
+// Map messageId → phone number for building LID mappings from outbound echoes
+// When sendMessage sends to phone, the echo comes back with the LID JID
+const pendingMessagePhones = new Map();
+const PENDING_MESSAGE_TTL_MS = 30000; // 30 seconds
+
 // In-memory message store for getMessage callback
 // Stores recent messages so Baileys can retry decryption
 const messageStore = new Map();
@@ -408,10 +413,8 @@ class WhatsAppService {
           logger.error('Error sending WhatsApp connected email:', emailErr);
         }
 
-        // Resolve LID mappings in background after connection stabilizes
-        setTimeout(() => this.resolveAllLIDMappings(subAccountId).catch(err =>
-          logger.error('Background LID mapping resolution failed:', err)
-        ), 5000);
+        // Note: LID mappings are built from outbound message echoes (messageId→phone tracking)
+        // socket.onWhatsApp() returns phone JIDs, not LIDs, so batch resolution doesn't work
       }
     } catch (error) {
       logger.error(`Handle connection update error for ${subAccountId}:`, error);
@@ -576,55 +579,30 @@ class WhatsAppService {
               contactName: isFromMe ? mapping.contactName : (pushName || mapping.contactName)
             });
           } else {
-            // No mapping found - try to resolve by checking unmapped phones via WhatsApp
-            // This is SAFE: WhatsApp itself confirms which phone belongs to this LID
+            // No mapping found for this LID
             let resolved = false;
-            const socket = connections.get(subAccountId);
 
-            if (socket) {
-              try {
-                // Try all unmapped phone numbers for this subAccount
-                const unmapped = await WhatsAppMapping.findAll({
-                  where: { subAccountId, whatsappId: null },
-                  attributes: ['id', 'phoneNumber'],
-                  limit: 100
-                });
-
-                if (unmapped.length > 0) {
-                  logger.info('LID resolution: checking unmapped phones:', {
-                    lid: contactNumber, pushName, unmappedCount: unmapped.length
-                  });
-
-                  for (const entry of unmapped) {
-                    try {
-                      const [result] = await socket.onWhatsApp(entry.phoneNumber);
-                      if (result?.exists) {
-                        const verifiedId = result.jid.split('@')[0];
-                        if (verifiedId === contactNumber) {
-                          // VERIFIED: WhatsApp confirmed this phone belongs to this LID
-                          await entry.update({
-                            whatsappId: contactNumber,
-                            contactName: isFromMe ? entry.contactName : (pushName || entry.contactName),
-                            lastActivityAt: new Date()
-                          });
-                          resolvedPhoneNumber = entry.phoneNumber;
-                          resolvedContactName = isFromMe ? entry.contactName : (pushName || entry.contactName);
-                          resolved = true;
-                          logger.info('LID resolved via WhatsApp-verified phone match:', {
-                            lid: contactNumber, phoneNumber: entry.phoneNumber,
-                            contactName: resolvedContactName
-                          });
-                          break;
-                        }
-                      }
-                    } catch (waErr) {
-                      // Skip this phone on error, continue to next
-                    }
-                  }
-                }
-              } catch (err) {
-                logger.warn('LID on-demand resolution error:', err.message);
-              }
+            // Method 1: Check if this is an echo of our own send (messageId → phone)
+            // This builds VERIFIED LID mappings from outbound message echoes
+            if (isFromMe && pendingMessagePhones.has(msg.key.id)) {
+              const originalPhone = pendingMessagePhones.get(msg.key.id);
+              pendingMessagePhones.delete(msg.key.id);
+              // contactNumber is the LID, originalPhone is the real phone
+              await WhatsAppMapping.upsert({
+                subAccountId,
+                phoneNumber: originalPhone,
+                whatsappId: contactNumber,
+                lastActivityAt: new Date()
+              }, { conflictFields: ['subAccountId', 'phoneNumber'] });
+              resolvedPhoneNumber = originalPhone;
+              resolved = true;
+              // Also mark as app-originated so GHL sync is skipped
+              const pendingKeyLID = `${subAccountId}:${contactNumber}`;
+              pendingSends.set(pendingKeyLID, Date.now());
+              setTimeout(() => pendingSends.delete(pendingKeyLID), PENDING_SEND_TTL_MS);
+              logger.info('LID mapping created from outbound echo:', {
+                lid: contactNumber, phoneNumber: originalPhone, messageId: msg.key.id
+              });
             }
 
             if (!resolved) {
@@ -958,6 +936,12 @@ class WhatsAppService {
       // Store outgoing message for getMessage retry callback
       if (sentMessage) {
         storeMessage(subAccountId, sentMessage);
+      }
+
+      // Track messageId → phone so echo handler can build LID mapping
+      if (sentMessage?.key?.id) {
+        pendingMessagePhones.set(sentMessage.key.id, cleanPhone);
+        setTimeout(() => pendingMessagePhones.delete(sentMessage.key.id), PENDING_MESSAGE_TTL_MS);
       }
 
       // Store message (mark source: 'app' so messages.upsert can detect app-originated sends)
