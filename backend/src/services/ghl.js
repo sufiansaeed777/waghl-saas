@@ -683,19 +683,35 @@ class GHLService {
           externalPhone
         );
       } else {
-        // Phone is an unresolved LID - try exact full name match for THIS message only
-        // SAFETY: Only use exact matches (score 100) and do NOT store permanent LID→phone mapping
-        // This prevents the original bug where wrong mappings poisoned future messages
+        // Phone is an unresolved LID - try name match and store mapping if found
+        // getContactByName returns null for ambiguous matches (multiple contacts at same score)
         if (contactName) {
           contact = await this.getContactByName(subAccount, subAccount.ghlLocationId, contactName);
           if (contact) {
-            // getContactByName already filters for exact/unambiguous matches
-            logger.info('Syncing via exact name match (no permanent mapping):', {
+            logger.info('Found GHL contact by name for unresolved LID:', {
               externalPhone, contactName, contactId: contact.id, contactPhone: contact.phone
             });
-            // Do NOT store LID→phone mapping - let it build from verified outbound echoes only
+            // Store LID→phone mapping so future outbound from phone also works
+            if (contact.phone && isLID) {
+              const { WhatsAppMapping } = require('../models');
+              const cleanPhone = contact.phone.replace(/\D/g, '');
+              try {
+                await WhatsAppMapping.upsert({
+                  subAccountId: subAccount.id,
+                  phoneNumber: cleanPhone,
+                  whatsappId: externalPhone,
+                  contactName: contactName,
+                  lastActivityAt: new Date()
+                }, { conflictFields: ['subAccountId', 'phoneNumber'] });
+                logger.info('Stored LID mapping from name match:', {
+                  phoneNumber: cleanPhone, whatsappId: externalPhone, contactName
+                });
+              } catch (mappingErr) {
+                logger.warn('Failed to store LID mapping:', mappingErr.message);
+              }
+            }
           } else {
-            logger.warn('Skipping GHL sync: no exact name match found for unresolved LID', {
+            logger.warn('Skipping GHL sync: no name match found for unresolved LID', {
               externalPhone, contactName, locationId: subAccount.ghlLocationId
             });
             return null;
