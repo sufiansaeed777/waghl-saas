@@ -686,7 +686,17 @@ class GHLService {
         // Phone is an unresolved LID - try name match and store mapping if found
         // getContactByName returns null for ambiguous matches (multiple contacts at same score)
         if (contactName) {
+          // Try full name first, then first name only if full name returns nothing
           contact = await this.getContactByName(subAccount, subAccount.ghlLocationId, contactName);
+          if (!contact) {
+            // Full name failed - try first name only (first word)
+            // "Simone D'Aniello" → "Simone", "Mamma Michi 11.10.2024😭" → "Mamma"
+            const firstName = contactName.split(/[\s']+/)[0];
+            if (firstName && firstName !== contactName && firstName.length >= 2) {
+              logger.info('Retrying GHL search with first name only:', { firstName, fullName: contactName });
+              contact = await this.getContactByName(subAccount, subAccount.ghlLocationId, firstName);
+            }
+          }
           if (contact) {
             logger.info('Found GHL contact by name for unresolved LID:', {
               externalPhone, contactName, contactId: contact.id, contactPhone: contact.phone
