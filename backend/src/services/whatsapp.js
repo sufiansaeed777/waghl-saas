@@ -490,7 +490,7 @@ class WhatsAppService {
         // For inbound: remoteJid is the sender
         // For outbound (fromMe): remoteJid is the recipient
         const remoteJid = msg.key.remoteJid;
-        const isLID = remoteJid.includes('@lid');
+        let isLID = remoteJid.includes('@lid');
         let contactNumber = remoteJid.split('@')[0];
 
         // Log for debugging
