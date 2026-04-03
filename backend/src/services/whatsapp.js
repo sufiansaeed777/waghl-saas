@@ -518,12 +518,20 @@ class WhatsAppService {
           // Method 2: Try Baileys' built-in LID mapping (v7+)
           if (isLID || !/^[1-9]\d{9,12}$/.test(contactNumber)) {
             const socket = connections.get(subAccountId);
+            logger.info('LID resolution attempt:', {
+              hasSocket: !!socket,
+              hasSignalRepo: !!socket?.signalRepository,
+              hasLidMapping: !!socket?.signalRepository?.lidMapping,
+              hasPNForLID: typeof socket?.signalRepository?.lidMapping?.getPNForLID,
+              remoteJid
+            });
             if (socket && socket.signalRepository && socket.signalRepository.lidMapping) {
               try {
                 const lidMapping = socket.signalRepository.lidMapping;
                 // Try to get phone number from LID using Baileys internal store
                 if (typeof lidMapping.getPNForLID === 'function') {
                   const phoneJid = await lidMapping.getPNForLID(remoteJid);
+                  logger.info('getPNForLID result:', { lid: remoteJid, result: phoneJid });
                   if (phoneJid) {
                     // Format: "393812345678:0@s.whatsapp.net" — strip device and domain
                     const resolvedNumber = phoneJid.split('@')[0].split(':')[0];
