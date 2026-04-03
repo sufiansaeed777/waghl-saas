@@ -515,8 +515,8 @@ class WhatsAppService {
             }
           }
 
-          // Method 2: Try Baileys' built-in LID mapping (v6.6.0+)
-          if (contactNumber.includes('lid') || !/^[1-9]\d{9,14}$/.test(contactNumber)) {
+          // Method 2: Try Baileys' built-in LID mapping (v7+)
+          if (isLID || !/^[1-9]\d{9,12}$/.test(contactNumber)) {
             const socket = connections.get(subAccountId);
             if (socket && socket.signalRepository && socket.signalRepository.lidMapping) {
               try {
@@ -525,9 +525,11 @@ class WhatsAppService {
                 if (typeof lidMapping.getPNForLID === 'function') {
                   const phoneJid = await lidMapping.getPNForLID(remoteJid);
                   if (phoneJid) {
-                    const resolvedNumber = phoneJid.split('@')[0];
+                    // Format: "393812345678:0@s.whatsapp.net" — strip device and domain
+                    const resolvedNumber = phoneJid.split('@')[0].split(':')[0];
                     if (/^[1-9]\d{9,14}$/.test(resolvedNumber)) {
                       contactNumber = resolvedNumber;
+                      isLID = false; // Successfully resolved to phone
                       logger.info('Resolved LID via Baileys lidMapping:', { lid: remoteJid, phoneNumber: contactNumber });
                     }
                   }
